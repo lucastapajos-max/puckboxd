@@ -219,7 +219,7 @@ async function viewGame(id) {
         ${c.reviews.length ? c.reviews.map((r) => reviewItem(r)).join('') : '<p class="muted">Ninguém escreveu sobre este jogo ainda.</p>'}
 
         ${g.state !== 'future' ? `<h2>Gols</h2>${show ? goalsHtml() : '<p class="muted">Escondido no modo sem spoiler.</p>'}` : ''}
-        ${show && g.stars.length ? `<h2>Três estrelas</h2><div class="stars-list">${g.stars.map((s) => `<div><span class="stars">${'★'.repeat(s.star)}</span> ${esc(s.name)} <span class="muted small">${esc(s.team)} · ${esc(s.position)}</span></div>`).join('')}</div>` : ''}
+        ${show && g.stars.length ? `<h2>Jogadores em destaque</h2><div class="stars-list">${[...g.stars].sort((a, b) => a.star - b.star).map((s) => `<div><span class="badge">${s.star}º</span> ${logo(s.team, 'sm')} ${esc(s.name)} <span class="muted small">${esc(s.team)} · ${esc(s.position)}</span></div>`).join('')}</div><p class="muted small">Seleção oficial da NHL para o jogo.</p>` : ''}
       </div>
       <aside>
         <h2>Comunidade</h2>
