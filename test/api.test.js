@@ -156,3 +156,20 @@ test('escolha do espectador: voto, validação e rankings', async () => {
   assert.equal(feed.topMvps[0].id, star.id);
   assert.equal(feed.topMvps[0].votes, 2);
 });
+
+test('limite de tentativas de login e cabeçalhos de segurança', async () => {
+  const limited = createApp({
+    db: openDb(':memory:'), nhl: createNhl({ mock: true }), publicDir: join(root, 'public'),
+    authLimit: { max: 3, windowMs: 60e3 },
+  });
+  await new Promise((r) => limited.listen(0, r));
+  const url = `http://localhost:${limited.address().port}/api/login`;
+  const attempt = () => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"username":"x","password":"yyyyyyyy"}' });
+  const statuses = [];
+  for (let i = 0; i < 4; i++) statuses.push((await attempt()).status);
+  assert.deepEqual(statuses, [401, 401, 401, 429]);
+  const res = await attempt();
+  assert.match(res.headers.get('content-security-policy'), /default-src 'self'/);
+  assert.equal(res.headers.get('x-frame-options'), 'DENY');
+  limited.close();
+});

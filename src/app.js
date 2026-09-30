@@ -56,7 +56,48 @@ async function readJson(req) {
   }
 }
 
-export function createApp({ db, nhl, publicDir, secureCookies = false }) {
+const SECURITY_HEADERS = {
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'x-frame-options': 'DENY',
+  'content-security-policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    'font-src https://fonts.gstatic.com',
+    "img-src 'self' data: https://assets.nhle.com",
+    "connect-src 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '),
+};
+
+// Limite simples em memória: `max` requisições por janela, por IP e por rota.
+function rateLimiter({ max, windowMs }) {
+  const hits = new Map();
+  return (key) => {
+    const now = Date.now();
+    const entry = hits.get(key);
+    if (!entry || entry.reset <= now) {
+      if (hits.size > 10_000) for (const [k, v] of hits) if (v.reset <= now) hits.delete(k);
+      hits.set(key, { count: 1, reset: now + windowMs });
+      return true;
+    }
+    entry.count += 1;
+    return entry.count <= max;
+  };
+}
+
+export function createApp({ db, nhl, publicDir, secureCookies = false, trustProxy = false, authLimit = { max: 20, windowMs: 15 * 60e3 } }) {
+  const authAllowed = rateLimiter(authLimit);
+  // Atrás do proxy do Railway, o IP real vem no primeiro item do X-Forwarded-For.
+  const clientIp = (req) =>
+    (trustProxy && String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim()) || req.socket.remoteAddress;
+  const guardAuth = (req) => {
+    if (!authAllowed(`${clientIp(req)} ${req.url}`)) throw new HttpError(429, 'Muitas tentativas. Espere alguns minutos e tente de novo.');
+  };
+
   const q = {
     userByName: db.prepare('SELECT * FROM users WHERE username = ?'),
     userById: db.prepare('SELECT id, username, fav_team, bio, created_at FROM users WHERE id = ?'),
@@ -191,6 +232,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
   route('GET', /^\/api\/me$/, (req) => ({ user: currentUser(req) }));
 
   route('POST', /^\/api\/signup$/, async (req, res) => {
+    guardAuth(req);
     const { username = '', password = '' } = await readJson(req);
     if (!USER_RE.test(username)) throw new HttpError(400, 'Usuário deve ter 3 a 20 caracteres: letras, números ou _');
     if (typeof password !== 'string' || password.length < 8) throw new HttpError(400, 'Senha precisa de pelo menos 8 caracteres');
@@ -202,6 +244,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
   });
 
   route('POST', /^\/api\/login$/, async (req, res) => {
+    guardAuth(req);
     const { username = '', password = '' } = await readJson(req);
     const user = typeof username === 'string' ? q.userByName.get(username) : null;
     const ok =
@@ -357,6 +400,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
 
   return createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
     try {
       if (url.pathname.startsWith('/api/')) {
         // CSRF: escrita só com JSON (formulários de outro site não conseguem mandar esse content-type sem preflight)

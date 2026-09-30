@@ -26,7 +26,19 @@ npm run mock     # dados falsos, funciona offline
 npm test
 ```
 
-Abre em http://localhost:3000. Variáveis: `PORT`, `DB_FILE` (padrão `data/puckboxd.db`), `NHL_MOCK=1`, `NODE_ENV=production` (cookie `Secure`).
+Abre em http://localhost:3000. Variáveis: `PORT`, `DB_FILE` (padrão `data/puckboxd.db`), `NHL_MOCK=1`, `NODE_ENV=production` (cookie `Secure`), `TRUST_PROXY=1` (atrás de proxy reverso fora do Railway).
+
+## Publicando no Railway
+
+O repositório já vem configurado (`railway.json` e `.nvmrc`).
+
+1. Em https://railway.com, entre com o GitHub e crie um projeto com **Deploy from GitHub repo** apontando para este repositório.
+2. No serviço criado, adicione um **Volume** com mount path `/data`. Sem volume, contas e registros somem a cada deploy.
+3. Em **Settings → Networking**, clique em **Generate Domain** para ganhar um endereço público.
+
+O app detecta o Railway sozinho: grava o banco no volume, liga cookies `Secure` e lê o IP real para o limite de tentativas de login. Cada push na `main` gera um deploy novo.
+
+**Backup:** o banco inteiro é o arquivo `/data/puckboxd.db`. Vale baixar uma cópia de vez em quando.
 
 ## Como está montado
 
@@ -61,4 +73,3 @@ Quando alguém registra um jogo, o servidor busca o jogo na NHL e grava um retra
 - Curtir e comentar reviews
 - Watchlist para jogos antigos (a API tem temporadas passadas via `/v1/club-schedule-season/{time}/{temporada}`)
 - Busca de jogos por confronto
-- Deploy: qualquer host que rode Node com disco persistente (Fly.io, Railway, uma VPS). Em host sem disco persistente, trocar o SQLite por Postgres.
