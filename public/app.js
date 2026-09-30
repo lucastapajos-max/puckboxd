@@ -116,8 +116,12 @@ function reveal(id) {
 
 const BOOKMARK = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>';
 
+// Jogos já desenhados em card, para redesenhar um card só (ex.: depois do "Quero ver").
+const cardGames = new Map();
+
 // `withDate`: mostra o dia nos jogos futuros (na agenda o dia já está no título).
 function gameCard(g, { withDate = false } = {}) {
+  cardGames.set(String(g.id), { g, withDate });
   const show = g.state !== 'future' && canSee(g);
   const awayWin = g.state === 'final' && g.away.score > g.home.score;
   const homeWin = g.state === 'final' && g.home.score > g.away.score;
@@ -129,13 +133,20 @@ function gameCard(g, { withDate = false } = {}) {
   const community = g.community?.logs
     ? `<span>${g.community.avg ? stars(Math.round(g.community.avg)) : ''} ${g.community.logs} ${g.community.logs === 1 ? 'registro' : 'registros'}</span>`
     : '';
+  // O card todo abre o jogo (link esticado por CSS), mas o botão "Quero ver" fica fora do link:
+  // botão dentro de link não é permitido e abriria o jogo junto.
+  const action = g.loggedByMe ? '<span class="badge mine">Assistido</span>'
+    : me ? `<button type="button" class="card-watch" data-watch="${g.id}" aria-pressed="${Boolean(g.inWatchlist)}"
+        title="${g.inWatchlist ? 'Tirar da watchlist' : 'Adicionar à watchlist'}">${BOOKMARK}<span>${g.inWatchlist ? 'Na watchlist' : 'Quero ver'}</span></button>`
+    : '';
   return `
-    <a class="game-card" href="#/jogo/${g.id}">
-      <div class="row ${show && homeWin ? 'loser' : ''}">${logo(g.away.abbrev)}<span class="abbr">${esc(g.away.place || g.away.abbrev)} <span class="muted">${esc(g.away.name)}</span></span><span class="score">${score(g.away.score)}</span></div>
-      <div class="row ${show && awayWin ? 'loser' : ''}">${logo(g.home.abbrev)}<span class="abbr">${esc(g.home.place || g.home.abbrev)} <span class="muted">${esc(g.home.name)}</span></span><span class="score">${score(g.home.score)}</span></div>
-      <div class="meta">${status}${g.loggedByMe ? '<span class="badge mine">Assistido</span>'
-        : g.inWatchlist ? `<span class="badge watch" title="Na sua watchlist">${BOOKMARK} Quero ver</span>` : community}</div>
-    </a>`;
+    <div class="game-card" data-card="${g.id}">
+      <a class="card-link" href="#/jogo/${g.id}" aria-label="${esc(g.away.abbrev)} @ ${esc(g.home.abbrev)}">
+        <div class="row ${show && homeWin ? 'loser' : ''}">${logo(g.away.abbrev)}<span class="abbr">${esc(g.away.place || g.away.abbrev)} <span class="muted">${esc(g.away.name)}</span></span><span class="score">${score(g.away.score)}</span></div>
+        <div class="row ${show && awayWin ? 'loser' : ''}">${logo(g.home.abbrev)}<span class="abbr">${esc(g.home.place || g.home.abbrev)} <span class="muted">${esc(g.home.name)}</span></span><span class="score">${score(g.home.score)}</span></div>
+      </a>
+      <div class="meta"><span class="meta-left">${status}${community}</span>${action}</div>
+    </div>`;
 }
 
 // Linha compacta para jogos vindos do banco (feed, perfil).
@@ -297,7 +308,8 @@ async function viewSchedule(date) {
   try {
     const { games } = await api('GET', `/api/schedule/${date}`);
     $games.className = games.length ? 'game-grid' : 'empty';
-    $games.innerHTML = games.length ? games.map(gameCard).join('') : 'Nenhum jogo nesse dia.';
+    $games.innerHTML = games.length ? games.map((g) => gameCard(g)).join('') : 'Nenhum jogo nesse dia.';
+    bindWatchButtons($games);
   } catch (e) {
     $games.className = 'empty';
     $games.textContent = e.message;
@@ -507,12 +519,13 @@ async function viewTeam(abbrev) {
       <p class="muted">${played.length} jogos disputados · ${played.filter((g) => g.loggedByMe).length} assistidos por você</p></div></div>
     ${next.length ? `<h2>Próximos jogos</h2><div class="game-grid">${next.map((g) => gameCard(g, { withDate: true })).join('')}</div>` : ''}
     <h2>Já disputados</h2>
-    ${played.length ? `<div class="game-grid">${played.map(gameCard).join('')}</div>` : '<p class="muted">Nenhum jogo nesta temporada ainda.</p>'}`;
+    ${played.length ? `<div class="game-grid">${played.map((g) => gameCard(g)).join('')}</div>` : '<p class="muted">Nenhum jogo nesta temporada ainda.</p>'}`;
+  bindWatchButtons();
 }
 
 async function viewUser(username) {
   $view.innerHTML = '<div class="loading">Carregando perfil…</div>';
-  const { user, stats, diary, lists, watchlistCount } = await api('GET', `/api/users/${encodeURIComponent(username)}`);
+  const { user, stats, diary, lists, watchlist } = await api('GET', `/api/users/${encodeURIComponent(username)}`);
   const isMe = me && me.id === user.id;
   let month = '';
   const rows = diary.map((l) => {
@@ -546,7 +559,6 @@ async function viewUser(username) {
         <h1>${esc(user.username)} ${user.fav_team ? logo(user.fav_team, 'sm') : ''}</h1>
         <p class="small">
           <a href="#/u/${esc(user.username)}/rede"><b id="followers-n">${user.followers}</b> ${user.followers === 1 ? 'seguidor' : 'seguidores'} · <b>${user.following}</b> seguindo</a>
-          · <a href="#/u/${esc(user.username)}/watchlist"><b>${watchlistCount}</b> quero ver</a>
           ${user.follows_you ? '<span class="badge">Segue você</span>' : ''}
         </p>
         ${me && !isMe ? followButton(user.username, user.is_following) : ''}
@@ -571,9 +583,17 @@ async function viewUser(username) {
         <button class="ghost">Salvar</button>
       </form>` : ''}
 
-    <h2>Listas ${isMe ? '<a href="#/listas/nova" class="btn ghost small" style="float:right;text-transform:none">+ Nova lista</a>' : ''}</h2>
-    ${lists.length ? `<div class="list-grid">${lists.map(listCard).join('')}</div>`
-      : `<p class="muted small">${isMe ? 'Monte listas como "Melhores jogos de playoff que eu vi". Crie uma aqui ou pela página de qualquer jogo.' : 'Nenhuma lista ainda.'}</p>`}
+    <div class="profile-collections">
+      <section class="pc-lists">
+        <h2>Listas ${isMe ? '<a href="#/listas/nova" class="btn ghost small h2-action">+ Nova lista</a>' : ''}</h2>
+        ${lists.length ? `<div class="list-grid">${lists.map(listCard).join('')}</div>`
+          : `<p class="muted small">${isMe ? 'Monte listas como "Melhores jogos de playoff que eu vi". Crie uma aqui ou pela página de qualquer jogo.' : 'Nenhuma lista ainda.'}</p>`}
+      </section>
+      <section class="pc-watch">
+        <h2>Watchlist ${watchlist.count ? `<a href="#/u/${esc(user.username)}/watchlist" class="btn ghost small h2-action">Ver lista completa</a>` : ''}</h2>
+        ${watchlistPreview(user.username, watchlist, isMe)}
+      </section>
+    </div>
 
     <div class="layout-2">
       <div>
@@ -888,6 +908,7 @@ async function viewSearch(initial = '') {
     if (r.lists.length) parts.push(`<section><h2>Listas</h2><div class="list-grid">${r.lists.map((l) => listCard({ ...l, preview: [] })).join('')}</div></section>`);
     $results.innerHTML = parts.length ? parts.join('') : `<p class="empty">Nada encontrado para “${esc(text.trim())}”.</p>`;
     bindFollow($results);
+    bindWatchButtons($results);
   }
 
   $input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => run($input.value), 250); });
@@ -896,20 +917,54 @@ async function viewSearch(initial = '') {
 
 // ---------- watchlist ----------
 
+// Bloco do perfil: o próximo jogo marcado (sem placar) e o resumo da lista.
+function watchlistPreview(username, w, isMine) {
+  if (!w.count) {
+    return `<p class="muted small">${isMine ? 'Clique em "Quero ver" nos cards de jogos para montar sua watchlist.' : 'Nenhum jogo na watchlist.'}</p>`;
+  }
+  const next = w.next
+    ? `<a class="watch-next" href="#/jogo/${w.next.game_id}">
+        <span class="muted small">Próximo jogo</span>
+        <span class="watch-next-teams">${logo(w.next.away_abbrev)} <b>${esc(w.next.away_abbrev)}</b> <span class="muted">@</span> <b>${esc(w.next.home_abbrev)}</b> ${logo(w.next.home_abbrev)}</span>
+        <span class="small">${new Date(w.next.start_utc).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })} · ${fmtTime(w.next.start_utc)}</span>
+      </a>`
+    : '<p class="muted small">Nenhum jogo futuro marcado.</p>';
+  const others = [
+    w.ready ? `${w.ready} ${w.ready === 1 ? 'jogo que já dá' : 'jogos que já dá'} para assistir` : '',
+    `${w.count} no total`,
+  ].filter(Boolean).join(' · ');
+  return `${next}<p class="muted small watch-summary"><a href="#/u/${esc(username)}/watchlist">${others}</a></p>`;
+}
+
 function watchButton(gameId, on) {
   return `<button class="ghost watch-btn" data-watch="${gameId}" aria-pressed="${Boolean(on)}">${BOOKMARK}<span>${on ? 'Na watchlist' : 'Quero ver'}</span></button>`;
 }
 
 function bindWatchButtons(root = $view) {
-  root.querySelectorAll('[data-watch]').forEach((b) => b.addEventListener('click', async () => {
+  root.querySelectorAll('[data-watch]').forEach((b) => b.addEventListener('click', async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     const on = b.getAttribute('aria-pressed') === 'true';
     b.disabled = true;
     try {
       const r = await api(on ? 'DELETE' : 'POST', `/api/watchlist/${b.dataset.watch}`);
+      const card = b.closest('[data-card]');
+      const cached = card && cardGames.get(card.dataset.card);
+      if (cached) {
+        // Redesenha o card: entrar na watchlist esconde o placar na hora.
+        cached.g.inWatchlist = r.inWatchlist;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = gameCard(cached.g, { withDate: cached.withDate }).trim();
+        const fresh = tmp.firstElementChild;
+        card.replaceWith(fresh);
+        bindWatchButtons(fresh);
+        fresh.querySelector('[data-watch]')?.focus();
+        return;
+      }
       b.setAttribute('aria-pressed', r.inWatchlist);
       b.querySelector('span').textContent = r.inWatchlist ? 'Na watchlist' : 'Quero ver';
-    } catch (e) {
-      alert(e.message);
+    } catch (err) {
+      alert(err.message);
     }
     b.disabled = false;
   }));

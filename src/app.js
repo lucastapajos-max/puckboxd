@@ -435,7 +435,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     return {
       user: { ...q.userById.get(user.id), ...social.followInfo(user.id, currentUser(req)?.id) },
       lists: social.userLists(user.id),
-      watchlistCount: watchlist.count(user.id),
+      watchlist: watchlist.preview(user.id),
       stats: {
         ...q.userStats.get(user.id),
         histogram: Object.fromEntries(q.userRatingHistogram.all(user.id).map((r) => [r.rating, r.n])),

@@ -89,8 +89,18 @@ button.profile-logout { display: none; margin-top: .4rem; padding: 0; }
 
 /* cards de jogo */
 .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
-.game-card { background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; display: block; transition: border-color .15s; }
+.game-card { position: relative; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; display: block; transition: border-color .15s; }
 .game-card:hover { border-color: var(--ice); color: inherit; }
+.card-link { display: block; color: inherit; }
+.card-link:hover { color: inherit; }
+/* link esticado: o card inteiro abre o jogo; o botão fica por cima dele */
+.card-link::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius); }
+.card-link:focus-visible::after { outline: 2px solid var(--ice); outline-offset: 2px; }
+.game-card .meta .meta-left { display: inline-flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.card-watch { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: .3rem; font-size: .72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .02em; padding: .2rem .5rem; border-radius: 4px; background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.card-watch:hover { color: var(--star); border-color: var(--star); filter: none; }
+.card-watch[aria-pressed='true'] { color: var(--star); border-color: var(--star); }
 .game-card .row { display: flex; align-items: center; gap: .6rem; padding: .15rem 0; }
 .game-card .row .abbr { font-weight: 600; flex: 1; }
 .game-card .row .score { font-size: 1.5rem; min-width: 1.5ch; text-align: right; }
@@ -392,3 +402,20 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
 .team-results { display: flex; flex-wrap: wrap; gap: .6rem; }
 .team-result { display: inline-flex; align-items: center; gap: .6rem; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .9rem .5rem .6rem; font-weight: 600; }
 .team-result:hover { border-color: var(--ice); color: inherit; }
+
+/* ---------- perfil: listas + watchlist ---------- */
+.profile-collections { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 2rem; }
+.profile-collections h2 { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.h2-action { text-transform: none; font-family: Inter, system-ui, sans-serif; letter-spacing: 0; }
+.pc-lists .list-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+.watch-next { display: flex; flex-direction: column; gap: .35rem; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; }
+.watch-next:hover { border-color: var(--star); color: inherit; }
+.watch-next-teams { display: flex; align-items: center; gap: .45rem; font-size: 1.05rem; }
+.watch-summary { margin: .6rem 0 0; }
+.watch-summary a { color: var(--muted); }
+.watch-summary a:hover { color: var(--ice); }
+@media (max-width: 760px) {
+  /* celular: watchlist em cima de Listas */
+  .profile-collections { grid-template-columns: 1fr; gap: 0; }
+  .pc-watch { order: -1; }
+}

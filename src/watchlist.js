@@ -21,6 +21,17 @@ export function createWatchlist({ db, nhl, route, currentUser, requireUser, snap
        WHERE w.user_id = ? AND g.last_period IS NULL AND (g.start_utc IS NULL OR g.start_utc <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
        LIMIT ${REFRESH_PER_VIEW}`,
     ),
+    // Resumo para o perfil: o próximo jogo marcado e quantos já dá para assistir.
+    next: db.prepare(
+      `SELECT g.id AS game_id, g.game_date, g.start_utc, g.away_abbrev, g.home_abbrev
+       FROM watchlist w JOIN games g ON g.id = w.game_id
+       WHERE w.user_id = ? AND g.last_period IS NULL AND g.start_utc > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+       ORDER BY g.start_utc LIMIT 1`,
+    ),
+    readyCount: db.prepare(
+      `SELECT COUNT(*) AS n FROM watchlist w JOIN games g ON g.id = w.game_id
+       WHERE w.user_id = ? AND (g.last_period IS NOT NULL OR g.start_utc IS NULL OR g.start_utc <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))`,
+    ),
     list: db.prepare(
       `SELECT g.id AS game_id, g.game_date, g.start_utc, g.away_abbrev, g.home_abbrev, g.last_period, g.venue, w.created_at
        FROM watchlist w JOIN games g ON g.id = w.game_id
@@ -64,5 +75,7 @@ export function createWatchlist({ db, nhl, route, currentUser, requireUser, snap
     };
   });
 
-  return { count, idsOf, has, removeGame };
+  const preview = (userId) => ({ count: count(userId), next: q.next.get(userId) ?? null, ready: q.readyCount.get(userId).n });
+
+  return { count, idsOf, has, removeGame, preview };
 }

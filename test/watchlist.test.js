@@ -70,7 +70,10 @@ test('watchlist: adicionar, marcar nos jogos, ver sem placar e sair ao registrar
   assert.ok(pub.items.every((i) => !('away_score' in i) && !('home_score' in i)), 'watchlist não mostra placar');
   assert.equal(pub.items.find((i) => i.game_id === vaiAcontecer.id).finished, false);
   assert.equal(pub.items.find((i) => i.game_id === vaiAcontecer.id).start_utc, start);
-  assert.equal((await eu('GET', '/api/users/quer_ver')).body.watchlistCount, 3);
+  const preview = (await eu('GET', '/api/users/quer_ver')).body.watchlist;
+  assert.equal(preview.count, 3);
+  assert.equal(preview.ready, 2);
+  assert.equal(preview.next.game_id, vaiAcontecer.id, 'o próximo é o jogo que ainda vai acontecer');
 
   // jogo futuro não pode ser registrado, mas pode ficar na watchlist; quando acontece, a lista atualiza
   assert.equal((await eu('POST', '/api/logs', { gameId: vaiAcontecer.id })).status, 400);
