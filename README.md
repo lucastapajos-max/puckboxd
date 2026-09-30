@@ -19,7 +19,7 @@ Nome provisório. Troque à vontade.
 Precisa de Node 22.13 ou mais novo. Não tem dependências para instalar.
 
 ```bash
-cd puckboxd
+cd puckboxd   # pasta do repositório
 npm start        # usa a API real da NHL
 npm run mock     # dados falsos, funciona offline
 npm test
