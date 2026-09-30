@@ -23,7 +23,11 @@ let returnTo = '#/'; // última tela do app antes do login
 // ---------- utilidades ----------
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const logoUrl = (abbrev) => `https://assets.nhle.com/logos/nhl/svg/${abbrev}_dark.svg`;
+// Logos próprios, no lugar do que vem da NHL (o dos Capitals é o mais atual da franquia).
+const LOCAL_LOGOS = { WSH: '/img/teams/WSH.svg' };
+const theme = () => document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+// A NHL tem uma versão de cada logo para fundo escuro (_dark) e outra para fundo claro (_light).
+const logoUrl = (abbrev) => LOCAL_LOGOS[abbrev] ?? `https://assets.nhle.com/logos/nhl/svg/${abbrev}_${theme()}.svg`;
 const logo = (abbrev, cls = '') => `<img class="logo ${cls}" src="${logoUrl(esc(abbrev))}" alt="${esc(abbrev)}" loading="lazy">`;
 const todayISO = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 10);
 const shiftDate = (iso, days) => new Date(Date.parse(`${iso}T12:00:00Z`) + days * 86400e3).toISOString().slice(0, 10);
@@ -47,6 +51,45 @@ async function api(method, path, body) {
   if (!res.ok) throw Object.assign(new Error(data.error || `Erro ${res.status}`), { status: res.status });
   return data;
 }
+
+// Recorta o centro da imagem em quadrado e reduz para `size`px, em JPEG.
+// Assim a foto chega pequena ao servidor, venha de onde vier (celular manda fotos de vários MB).
+async function squareImage(file, size) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Não consegui abrir essa imagem. Tente um JPG ou PNG.');
+  }
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff'; // PNG transparente não fica com fundo preto
+  ctx.fillRect(0, 0, size, size);
+  ctx.drawImage(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size);
+  bitmap.close?.();
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+// ---------- tema ----------
+
+const $themeToggle = document.getElementById('theme-toggle');
+const SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><g stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></g></svg>';
+const MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z"/></svg>';
+function paintThemeToggle() {
+  const light = theme() === 'light';
+  $themeToggle.innerHTML = light ? MOON : SUN;
+  $themeToggle.title = light ? 'Usar tema escuro' : 'Usar tema claro';
+}
+$themeToggle.addEventListener('click', () => {
+  const next = theme() === 'light' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem('theme', next); } catch { /* sem storage */ }
+  paintThemeToggle();
+  render(); // os logos da NHL mudam de versão com o tema
+});
+paintThemeToggle();
 
 // ---------- modo sem spoiler ----------
 
@@ -96,6 +139,19 @@ function gameLine(r, { showScore = true } = {}) {
   return `<a href="#/jogo/${r.game_id}">${logo(r.away_abbrev, 'sm')} ${esc(r.away_abbrev)} @ ${esc(r.home_abbrev)} ${logo(r.home_abbrev, 'sm')}${score}</a> <span class="muted">· ${fmtDate(r.game_date)}</span>`;
 }
 
+// Foto de perfil (ou a inicial, sem foto). `u` precisa de username e avatar_at.
+function avatar(u, size = '') {
+  const inner = u.avatar_at
+    ? `<img src="/api/users/${encodeURIComponent(u.username)}/avatar?v=${encodeURIComponent(u.avatar_at)}" alt="" loading="lazy">`
+    : esc(u.username[0].toUpperCase());
+  return `<span class="avatar ${size}">${inner}</span>`;
+}
+
+// Foto, nome e logo do time do coração, como no perfil.
+function author(u, size = 'xs') {
+  return `<a class="author" href="#/u/${esc(u.username)}">${avatar(u, size)}<span>${esc(u.username)}</span>${u.fav_team ? logo(u.fav_team, 'sm') : ''}</a>`;
+}
+
 function reviewItem(r, { withGame = false, showMvp } = {}) {
   const mine = me && me.username === r.username;
   // No feed, o placar só aparece se o próprio leitor já viu o jogo; aqui não sabemos, então segue o modo sem spoiler.
@@ -104,7 +160,7 @@ function reviewItem(r, { withGame = false, showMvp } = {}) {
   return `
     <article class="review">
       <header>
-        <a href="#/u/${esc(r.username)}">${esc(r.username)}</a>
+        ${author(r)}
         ${stars(r.rating)} ${r.liked ? '<span style="color:var(--like)">♥</span>' : ''}
         ${r.rewatch ? '<span class="badge">Revisto</span>' : ''}
         <span class="muted small">assistiu em ${fmtDate(r.watched_on)}${r.edited_at ? ' · editado' : ''}</span>
@@ -200,7 +256,7 @@ function renderSession() {
   document.getElementById('nav-bell').hidden = !me;
   refreshBell();
   $session.innerHTML = me
-    ? `<a href="#/u/${esc(me.username)}">${esc(me.username)}</a> <button class="ghost" id="logout">Sair</button>`
+    ? `<a class="session-user" href="#/u/${esc(me.username)}">${avatar(me, 'xs')}${esc(me.username)}</a> <button class="ghost" id="logout">Sair</button>`
     : `<a href="#/entrar" class="btn primary">Entrar</a>`;
   document.getElementById('logout')?.addEventListener('click', async () => {
     await api('POST', '/api/logout');
@@ -459,7 +515,15 @@ async function viewUser(username) {
 
   $view.innerHTML = `
     <div class="profile-head">
-      <div class="avatar">${esc(user.username[0].toUpperCase())}</div>
+      <div class="avatar-wrap">
+        ${avatar(user)}
+        ${isMe ? `<form class="photo-form" id="photo-form">
+            <label class="link small" for="photo-input">${user.avatar_at ? 'Trocar foto' : 'Adicionar foto'}</label>
+            <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp">
+            ${user.avatar_at ? '<button type="button" class="link small muted-link" id="photo-remove">Remover</button>' : ''}
+          </form>
+          <p class="error small" id="photo-error"></p>` : ''}
+      </div>
       <div>
         <h1>${esc(user.username)} ${user.fav_team ? logo(user.fav_team, 'sm') : ''}</h1>
         <p class="muted" style="margin:0">${user.bio ? esc(user.bio) : isMe ? 'Escreva uma bio no seu perfil.' : ''}</p>
@@ -505,6 +569,27 @@ async function viewUser(username) {
       </aside>
     </div>`;
 
+  document.getElementById('photo-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const $err = document.getElementById('photo-error');
+    $err.textContent = 'Enviando…';
+    try {
+      const { user: u } = await api('PUT', '/api/me/avatar', { image: await squareImage(file, 256) });
+      me = { ...me, ...u };
+      renderSession();
+      render();
+    } catch (err) {
+      $err.textContent = err.message;
+    }
+  });
+  document.getElementById('photo-remove')?.addEventListener('click', async () => {
+    if (!confirm('Remover sua foto de perfil?')) return;
+    const { user: u } = await api('DELETE', '/api/me/avatar');
+    me = { ...me, ...u };
+    renderSession();
+    render();
+  });
   bindFollow($view, (info) => {
     const n = document.getElementById('followers-n');
     n.textContent = info.followers;
@@ -515,6 +600,7 @@ async function viewUser(username) {
     const f = new FormData(e.target);
     const { user: u } = await api('PUT', '/api/me', { favTeam: f.get('favTeam') || null, bio: f.get('bio') });
     me = { ...me, ...u };
+    renderSession();
     render();
   });
 }
@@ -571,7 +657,7 @@ function viewAuth() {
 
 function userChip(u, { withFollow = false } = {}) {
   return `<div class="user-chip">
-    <a href="#/u/${esc(u.username)}"><span class="avatar sm">${esc(u.username[0].toUpperCase())}</span> ${esc(u.username)} ${u.fav_team ? logo(u.fav_team, 'sm') : ''}</a>
+    ${author(u, 'sm')}
     ${u.logs != null ? `<span class="muted small">${u.logs} ${u.logs === 1 ? 'registro' : 'registros'}</span>` : ''}
     ${withFollow && me && me.username !== u.username ? followButton(u.username, false) : ''}
   </div>`;
@@ -608,7 +694,7 @@ async function viewReview(id) {
   const scoreOk = !spoilerFree || revealed.has(r.game_id) || mine;
   const commentHtml = (list) => list.length
     ? list.map((c) => `<div class="comment">
-        <header><a href="#/u/${esc(c.username)}">${esc(c.username)}</a> <span class="muted small">${fmtDate(c.created_at.slice(0, 10))}${c.edited_at ? ' · editado' : ''}</span>
+        <header>${author(c, 'md')} <span class="muted small">${fmtDate(c.created_at.slice(0, 10))}${c.edited_at ? ' · editado' : ''}</span>
           ${me && me.username === c.username ? `<button class="link small" data-edit-comment="${c.id}">Editar</button>` : ''}
           ${me && (me.username === c.username || mine) ? `<button class="danger small" data-del-comment="${c.id}">Apagar</button>` : ''}</header>
         <p data-comment-body="${c.id}">${esc(c.body)}</p></div>`).join('')

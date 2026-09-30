@@ -290,3 +290,39 @@ test('editar o próprio registro mantém curtidas e comentários', async () => {
   assert.equal(cleared.body.log.mvp_player_id, null);
   assert.equal(cleared.body.log.review, null, 'campos não enviados voltam ao padrão, igual ao formulário');
 });
+
+test('foto de perfil: enviar, validar, servir e remover', async () => {
+  const eu = await user('foto_u');
+  // PNG 1×1 válido
+  const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>').toString('base64');
+
+  assert.equal((await eu('PUT', '/api/me/avatar', { image: `data:image/png;base64,${svg}` })).status, 400, 'SVG disfarçado de PNG é recusado');
+  assert.equal((await eu('PUT', '/api/me/avatar', { image: 'nada' })).status, 400);
+  const big = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(310 * 1024)]).toString('base64');
+  assert.equal((await eu('PUT', '/api/me/avatar', { image: `data:image/jpeg;base64,${big}` })).status, 413);
+  assert.equal((await client()('PUT', '/api/me/avatar', { image: `data:image/png;base64,${png}` })).status, 401);
+
+  const ok = await eu('PUT', '/api/me/avatar', { image: `data:image/png;base64,${png}` });
+  assert.equal(ok.status, 200);
+  const v = ok.body.user.avatar_at;
+  assert.ok(v);
+
+  const img = await fetch(`${base}/api/users/foto_u/avatar?v=${v}`);
+  assert.equal(img.status, 200);
+  assert.equal(img.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await img.arrayBuffer()), Buffer.from(png, 'base64'));
+
+  // aparece junto com o time nos comentários
+  await eu('PUT', '/api/me', { favTeam: 'WSH', bio: '' });
+  const [g] = await gamesOn('2025-11-12');
+  const logId = (await eu('POST', '/api/logs', { gameId: g.id, review: 'x' })).body.log.id;
+  const c = (await eu('POST', `/api/logs/${logId}/comments`, { body: 'oi' })).body.comments[0];
+  assert.equal(c.avatar_at, v);
+  assert.equal(c.fav_team, 'WSH');
+  assert.equal((await client()('GET', `/api/games/${g.id}`)).body.community.reviews[0].avatar_at, v);
+
+  const removed = await eu('DELETE', '/api/me/avatar');
+  assert.equal(removed.body.user.avatar_at, null);
+  assert.equal((await fetch(`${base}/api/users/foto_u/avatar`)).status, 404);
+});

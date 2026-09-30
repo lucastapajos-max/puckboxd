@@ -14,6 +14,8 @@ Nome provisório. Troque à vontade.
 - **Seguir pessoas**: aba "Seguindo" com o que quem você segue registrou, sugestões de quem seguir e página de seguidores.
 - **Curtir e comentar reviews**: cada review tem página própria com comentários. Quem escreveu a review pode apagar comentários nela.
 - **Notificações**: sino no topo com contador (atualiza a cada minuto) para novo seguidor, curtida, comentário na sua review e resposta numa review em que você comentou. Descurtir, deixar de seguir ou apagar o comentário tira o aviso.
+- **Foto de perfil**: upload de JPG, PNG ou WebP, recortada e reduzida no navegador para 256×256 antes de enviar. Aparece no topo, no perfil, nas reviews e nos comentários, junto com o logo do time do coração.
+- **Tema claro e escuro**: botão no topo; sem escolha, segue o sistema. Os logos da NHL trocam para a versão certa de cada fundo.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -53,7 +55,7 @@ src/social.js   listas, seguidores, curtidas, comentários e notificações
 src/http.js     erros HTTP e leitura de JSON
 src/nhl.js      cliente da API da NHL: cache em memória, normalização, mock
 src/db.js       schema SQLite (node:sqlite, embutido no Node)
-public/         front-end em JS puro, rotas por hash
+public/         front-end em JS puro, rotas por hash (logos próprios em public/img/teams)
 test/           testes de API e de normalização (node --test)
 ```
 

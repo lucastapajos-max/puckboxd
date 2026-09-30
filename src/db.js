@@ -137,6 +137,18 @@ export function openDb(file) {
   `);
   const commentCols = new Set(db.prepare('PRAGMA table_info(comments)').all().map((c) => c.name));
   if (!commentCols.has('edited_at')) db.exec('ALTER TABLE comments ADD COLUMN edited_at TEXT');
+  // Foto de perfil: o arquivo fica no banco (vai junto no volume e no backup).
+  // users.avatar_at muda a cada troca e entra na URL, para o navegador não mostrar a foto antiga.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS avatars (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      mime    TEXT NOT NULL,
+      data    BLOB NOT NULL
+    );
+  `);
+  if (!new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name)).has('avatar_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN avatar_at TEXT');
+  }
   if (!new Set(db.prepare('PRAGMA table_info(logs)').all().map((c) => c.name)).has('edited_at')) {
     db.exec('ALTER TABLE logs ADD COLUMN edited_at TEXT');
   }

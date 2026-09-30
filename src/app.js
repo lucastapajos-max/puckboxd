@@ -81,12 +81,17 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
 
   const q = {
     userByName: db.prepare('SELECT * FROM users WHERE username = ?'),
-    userById: db.prepare('SELECT id, username, fav_team, bio, created_at FROM users WHERE id = ?'),
+    userById: db.prepare('SELECT id, username, fav_team, bio, avatar_at, created_at FROM users WHERE id = ?'),
     insertUser: db.prepare('INSERT INTO users (username, pass_hash, salt) VALUES (?, ?, ?)'),
     updateProfile: db.prepare('UPDATE users SET fav_team = ?, bio = ? WHERE id = ?'),
+    saveAvatar: db.prepare('INSERT INTO avatars (user_id, mime, data) VALUES (?, ?, ?) ON CONFLICT(user_id) DO UPDATE SET mime = excluded.mime, data = excluded.data'),
+    touchAvatar: db.prepare("UPDATE users SET avatar_at = strftime('%Y%m%d%H%M%f', 'now') WHERE id = ?"),
+    deleteAvatar: db.prepare('DELETE FROM avatars WHERE user_id = ?'),
+    clearAvatar: db.prepare('UPDATE users SET avatar_at = NULL WHERE id = ?'),
+    avatarOf: db.prepare('SELECT mime, data FROM avatars WHERE user_id = ?'),
     insertSession: db.prepare('INSERT INTO sessions (token, user_id) VALUES (?, ?)'),
     sessionUser: db.prepare(
-      `SELECT u.id, u.username, u.fav_team, u.bio FROM sessions s JOIN users u ON u.id = s.user_id
+      `SELECT u.id, u.username, u.fav_team, u.bio, u.avatar_at FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ? AND s.created_at > datetime('now', '-${SESSION_DAYS} days')`,
     ),
     deleteSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
@@ -115,7 +120,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     ),
     gameHistogram: db.prepare('SELECT rating, COUNT(*) AS n FROM logs WHERE game_id = ? AND rating IS NOT NULL GROUP BY rating'),
     gameReviews: db.prepare(
-      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username
+      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username, u.fav_team, u.avatar_at
        FROM logs l JOIN users u ON u.id = l.user_id
        WHERE l.game_id = ? AND l.review IS NOT NULL AND l.review <> ''
        ORDER BY l.created_at DESC LIMIT 50`,
@@ -142,7 +147,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
        ) GROUP BY team ORDER BY n DESC LIMIT 5`,
     ),
     feed: db.prepare(
-      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username,
+      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username, u.fav_team, u.avatar_at,
               g.game_date, g.away_abbrev, g.home_abbrev, g.away_score, g.home_score, g.last_period
        FROM logs l JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id
        ORDER BY l.created_at DESC, l.id DESC LIMIT 30`,
@@ -265,6 +270,52 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     if (favTeam !== null && !isTeam(favTeam)) throw new HttpError(400, 'Time inválido');
     q.updateProfile.run(favTeam, String(bio).slice(0, 280) || null, user.id);
     return { user: q.userById.get(user.id) };
+  });
+
+  // --- foto de perfil ---
+
+  // O navegador já manda a foto reduzida (256×256), então 300 KB sobra.
+  const AVATAR_MAX = 300 * 1024;
+  // Tipo real pelo começo do arquivo, sem confiar no que o cliente diz. SVG fica de fora (pode ter script).
+  function sniffImage(buf) {
+    if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+    if (buf.length > 8 && buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (buf.length > 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+    return null;
+  }
+
+  route('PUT', /^\/api\/me\/avatar$/, async (req) => {
+    const user = requireUser(req);
+    const { image } = await readJson(req, 450 * 1024);
+    const m = typeof image === 'string' && image.match(/^data:image\/[a-z+]+;base64,([A-Za-z0-9+/=]+)$/);
+    if (!m) throw new HttpError(400, 'Imagem inválida');
+    const data = Buffer.from(m[1], 'base64');
+    if (data.length > AVATAR_MAX) throw new HttpError(413, 'Imagem grande demais');
+    const mime = sniffImage(data);
+    if (!mime) throw new HttpError(400, 'Use uma imagem JPG, PNG ou WebP');
+    q.saveAvatar.run(user.id, mime, data);
+    q.touchAvatar.run(user.id);
+    return { user: q.userById.get(user.id) };
+  });
+
+  route('DELETE', /^\/api\/me\/avatar$/, (req) => {
+    const user = requireUser(req);
+    q.deleteAvatar.run(user.id);
+    q.clearAvatar.run(user.id);
+    return { user: q.userById.get(user.id) };
+  });
+
+  route('GET', /^\/api\/users\/([A-Za-z0-9_]+)\/avatar$/, (_req, res, [username]) => {
+    const user = q.userByName.get(username);
+    const avatar = user && q.avatarOf.get(user.id);
+    if (!avatar) throw new HttpError(404, 'Sem foto');
+    // A URL leva ?v=<avatar_at>; foto nova muda a URL, então dá para guardar em cache à vontade.
+    res.writeHead(200, {
+      'content-type': avatar.mime,
+      'content-length': avatar.data.length,
+      'cache-control': 'public, max-age=31536000, immutable',
+    });
+    res.end(Buffer.from(avatar.data));
   });
 
   // --- NHL ---
@@ -433,6 +484,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
           const m = r.method === req.method && url.pathname.match(r.pattern);
           if (m) {
             const data = await r.handler(req, res, m.slice(1), url);
+            if (res.writableEnded) return; // a rota já respondeu (ex.: imagem)
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
             res.end(JSON.stringify(data));
             return;

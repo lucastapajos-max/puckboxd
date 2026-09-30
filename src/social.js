@@ -21,23 +21,23 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
               (SELECT COUNT(*) FROM follows WHERE follower_id = ?1) AS following`,
     ),
     followers: db.prepare(
-      `SELECT u.username, u.fav_team FROM follows f JOIN users u ON u.id = f.follower_id
+      `SELECT u.username, u.fav_team, u.avatar_at FROM follows f JOIN users u ON u.id = f.follower_id
        WHERE f.followee_id = ? ORDER BY f.created_at DESC LIMIT 200`,
     ),
     following: db.prepare(
-      `SELECT u.username, u.fav_team FROM follows f JOIN users u ON u.id = f.followee_id
+      `SELECT u.username, u.fav_team, u.avatar_at FROM follows f JOIN users u ON u.id = f.followee_id
        WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 200`,
     ),
     followingFeed: db.prepare(
       `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.edited_at,
-              l.mvp_name, l.mvp_team, u.username, ${GAME_COLS}
+              l.mvp_name, l.mvp_team, u.username, u.fav_team, u.avatar_at, ${GAME_COLS}
        FROM logs l JOIN follows f ON f.followee_id = l.user_id AND f.follower_id = ?
        JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id
        ORDER BY l.created_at DESC, l.id DESC LIMIT 50`,
     ),
     // Quem mais registra jogos e ainda não é seguido.
     suggestions: db.prepare(
-      `SELECT u.username, u.fav_team, COUNT(l.id) AS logs
+      `SELECT u.username, u.fav_team, u.avatar_at, COUNT(l.id) AS logs
        FROM users u JOIN logs l ON l.user_id = u.id
        WHERE u.id <> ?1 AND u.id NOT IN (SELECT followee_id FROM follows WHERE follower_id = ?1)
        GROUP BY u.id ORDER BY logs DESC LIMIT 6`,
@@ -46,7 +46,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     // reviews
     logFull: db.prepare(
       `SELECT l.id, l.user_id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how,
-              l.created_at, l.edited_at, l.mvp_player_id, l.mvp_name, l.mvp_team, u.username, ${GAME_COLS}
+              l.created_at, l.edited_at, l.mvp_player_id, l.mvp_name, l.mvp_team, u.username, u.fav_team, u.avatar_at, ${GAME_COLS}
        FROM logs l JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id WHERE l.id = ?`,
     ),
     logOwner: db.prepare('SELECT user_id FROM logs WHERE id = ?'),
@@ -54,7 +54,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     unlike: db.prepare('DELETE FROM review_likes WHERE user_id = ? AND log_id = ?'),
     likeCount: db.prepare('SELECT COUNT(*) AS n FROM review_likes WHERE log_id = ?'),
     comments: db.prepare(
-      `SELECT c.id, c.body, c.created_at, c.edited_at, c.user_id, u.username FROM comments c JOIN users u ON u.id = c.user_id
+      `SELECT c.id, c.body, c.created_at, c.edited_at, c.user_id, u.username, u.fav_team, u.avatar_at FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.log_id = ? ORDER BY c.id LIMIT 500`,
     ),
     addComment: db.prepare('INSERT INTO comments (log_id, user_id, body) VALUES (?, ?, ?)'),

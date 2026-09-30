@@ -5,12 +5,12 @@ export class HttpError extends Error {
   }
 }
 
-export async function readJson(req) {
+export async function readJson(req, maxBytes = 32 * 1024) {
   let size = 0;
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 32 * 1024) throw new HttpError(413, 'Corpo da requisição grande demais');
+    if (size > maxBytes) throw new HttpError(413, 'Corpo da requisição grande demais');
     chunks.push(chunk);
   }
   try {
