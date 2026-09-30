@@ -105,13 +105,16 @@ $spoiler.addEventListener('change', () => {
   store.set('spoilerFree', spoilerFree);
   render();
 });
-const canSee = (g) => !spoilerFree || g.loggedByMe || revealed.has(g.id);
+// Placar visível? Jogo na watchlist fica escondido mesmo sem o modo sem spoiler: a pessoa marcou para ver depois.
+const canSee = (g) => g.loggedByMe || revealed.has(g.id) || (!spoilerFree && !g.inWatchlist);
 function reveal(id) {
   revealed.add(id);
   store.set('revealed', [...revealed].slice(-500));
 }
 
 // ---------- componentes ----------
+
+const BOOKMARK = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>';
 
 function gameCard(g) {
   const show = g.state !== 'future' && canSee(g);
@@ -129,7 +132,8 @@ function gameCard(g) {
     <a class="game-card" href="#/jogo/${g.id}">
       <div class="row ${show && homeWin ? 'loser' : ''}">${logo(g.away.abbrev)}<span class="abbr">${esc(g.away.place || g.away.abbrev)} <span class="muted">${esc(g.away.name)}</span></span><span class="score">${score(g.away.score)}</span></div>
       <div class="row ${show && awayWin ? 'loser' : ''}">${logo(g.home.abbrev)}<span class="abbr">${esc(g.home.place || g.home.abbrev)} <span class="muted">${esc(g.home.name)}</span></span><span class="score">${score(g.home.score)}</span></div>
-      <div class="meta">${status}${g.loggedByMe ? '<span class="badge mine">Assistido</span>' : community}</div>
+      <div class="meta">${status}${g.loggedByMe ? '<span class="badge mine">Assistido</span>'
+        : g.inWatchlist ? `<span class="badge watch" title="Na sua watchlist">${BOOKMARK} Quero ver</span>` : community}</div>
     </a>`;
 }
 
@@ -301,10 +305,12 @@ async function viewSchedule(date) {
 
 async function viewGame(id) {
   $view.innerHTML = '<div class="loading">Carregando jogo…</div>';
-  const { game: g, community: c, myLogs } = await api('GET', `/api/games/${id}`);
+  const { game: g, community: c, myLogs, inWatchlist } = await api('GET', `/api/games/${id}`);
   g.loggedByMe = myLogs.length > 0;
+  g.inWatchlist = inWatchlist;
   const show = g.state !== 'future' && canSee(g);
   const hidden = g.state !== 'future' && !show;
+  const hiddenWhy = g.inWatchlist && !spoilerFree ? 'Escondido porque o jogo está na sua watchlist.' : 'Escondido no modo sem spoiler.';
 
   const goalsHtml = () => {
     if (!g.goals.length) return '<p class="muted">Sem gols registrados.</p>';
@@ -339,6 +345,7 @@ async function viewGame(id) {
             : me ? `<button class="primary" id="log">${g.loggedByMe ? 'Registrar de novo' : '+ Registrar / avaliar'}</button>
                     <button class="ghost" id="add-to-list">+ Adicionar à lista</button>`
             : '<a class="btn primary" href="#/entrar">Entre para registrar este jogo</a>'}
+          ${me && !g.loggedByMe ? watchButton(g.id, inWatchlist) : ''}
         </div>
 
         ${myLogs.length ? `<h2>Seus registros</h2>${myLogs.map((l) => `
@@ -354,7 +361,7 @@ async function viewGame(id) {
         <h2>Reviews</h2>
         ${c.reviews.length ? c.reviews.map((r) => reviewItem(r, { showMvp: show })).join('') : '<p class="muted">Ninguém escreveu sobre este jogo ainda.</p>'}
 
-        ${g.state !== 'future' ? `<h2>Gols</h2>${show ? goalsHtml() : '<p class="muted">Escondido no modo sem spoiler.</p>'}` : ''}
+        ${g.state !== 'future' ? `<h2>Gols</h2>${show ? goalsHtml() : `<p class="muted">${hiddenWhy}</p>`}` : ''}
         ${show && g.stars.length ? `<h2>Jogadores em destaque</h2><div class="stars-list">${[...g.stars].sort((a, b) => a.star - b.star).map((s) => `<div><span class="badge">${s.star}º</span> ${logo(s.team, 'sm')} ${esc(s.name)} <span class="muted small">${esc(s.team)} · ${esc(s.position)}</span></div>`).join('')}</div><p class="muted small">Seleção oficial da NHL para o jogo.</p>` : ''}
       </div>
       <aside>
@@ -363,7 +370,7 @@ async function viewGame(id) {
         ${histogram(c.histogram, c.rated)}
         <p class="small muted">${c.watchers} ${c.watchers === 1 ? 'pessoa assistiu' : 'pessoas assistiram'} · ${c.likes ?? 0} ${c.likes === 1 ? 'curtida' : 'curtidas'}</p>
         ${g.state !== 'future' ? `<h2>Escolha do espectador</h2>
-          ${!show ? '<p class="muted small">Escondido no modo sem spoiler.</p>'
+          ${!show ? `<p class="muted small">${hiddenWhy}</p>`
             : c.mvpVotes.length ? playerRanking(c.mvpVotes, (p) => `${p.votes} ${p.votes === 1 ? 'voto' : 'votos'}`)
             : '<p class="muted small">Ninguém escolheu ainda. Registre o jogo e diga quem foi o melhor no gelo na sua opinião.</p>'}` : ''}
         ${c.lists.length ? `<h2>Aparece nas listas</h2><div class="list-grid one">${c.lists.map(listCard).join('')}</div>` : ''}
@@ -374,6 +381,7 @@ async function viewGame(id) {
   document.getElementById('reveal')?.addEventListener('click', () => { reveal(g.id); render(); });
   document.getElementById('log')?.addEventListener('click', () => openLogDialog(g));
   document.getElementById('add-to-list')?.addEventListener('click', () => openListDialog(g));
+  bindWatchButtons();
   $view.querySelectorAll('[data-edit-log]').forEach((b) => b.addEventListener('click', () =>
     openLogDialog(g, myLogs.find((l) => String(l.id) === b.dataset.editLog))));
   $view.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
@@ -503,7 +511,7 @@ async function viewTeam(abbrev) {
 
 async function viewUser(username) {
   $view.innerHTML = '<div class="loading">Carregando perfil…</div>';
-  const { user, stats, diary, lists } = await api('GET', `/api/users/${encodeURIComponent(username)}`);
+  const { user, stats, diary, lists, watchlistCount } = await api('GET', `/api/users/${encodeURIComponent(username)}`);
   const isMe = me && me.id === user.id;
   let month = '';
   const rows = diary.map((l) => {
@@ -537,6 +545,7 @@ async function viewUser(username) {
         <h1>${esc(user.username)} ${user.fav_team ? logo(user.fav_team, 'sm') : ''}</h1>
         <p class="small">
           <a href="#/u/${esc(user.username)}/rede"><b id="followers-n">${user.followers}</b> ${user.followers === 1 ? 'seguidor' : 'seguidores'} · <b>${user.following}</b> seguindo</a>
+          · <a href="#/u/${esc(user.username)}/watchlist"><b>${watchlistCount}</b> quero ver</a>
           ${user.follows_you ? '<span class="badge">Segue você</span>' : ''}
         </p>
         ${me && !isMe ? followButton(user.username, user.is_following) : ''}
@@ -810,6 +819,61 @@ async function viewNetwork(username) {
       ${col('Seguidores', followers, 'Ninguém ainda.')}
       ${col('Seguindo', following, 'Não segue ninguém ainda.')}
     </div>`;
+}
+
+// ---------- watchlist ----------
+
+function watchButton(gameId, on) {
+  return `<button class="ghost watch-btn" data-watch="${gameId}" aria-pressed="${Boolean(on)}">${BOOKMARK}<span>${on ? 'Na watchlist' : 'Quero ver'}</span></button>`;
+}
+
+function bindWatchButtons(root = $view) {
+  root.querySelectorAll('[data-watch]').forEach((b) => b.addEventListener('click', async () => {
+    const on = b.getAttribute('aria-pressed') === 'true';
+    b.disabled = true;
+    try {
+      const r = await api(on ? 'DELETE' : 'POST', `/api/watchlist/${b.dataset.watch}`);
+      b.setAttribute('aria-pressed', r.inWatchlist);
+      b.querySelector('span').textContent = r.inWatchlist ? 'Na watchlist' : 'Quero ver';
+    } catch (e) {
+      alert(e.message);
+    }
+    b.disabled = false;
+  }));
+}
+
+async function viewWatchlist(username) {
+  $view.innerHTML = '<div class="loading">Carregando…</div>';
+  const { items, isMine } = await api('GET', `/api/users/${encodeURIComponent(username)}/watchlist`);
+  const now = Date.now();
+  const started = (i) => i.finished || (i.start_utc ? Date.parse(i.start_utc) <= now : i.game_date <= todayISO());
+  const ready = items.filter(started).reverse(); // mais recentes primeiro
+  const upcoming = items.filter((i) => !started(i));
+  const when = (i) => i.start_utc
+    ? `${fmtDate(i.game_date, { weekday: 'short', day: '2-digit', month: 'short' })} · ${fmtTime(i.start_utc)}`
+    : fmtDate(i.game_date);
+  // Sem placar de propósito: são jogos que a pessoa ainda não viu.
+  const row = (i, isReady) => `<li class="watch-item" data-item="${i.game_id}">
+      <a class="watch-game" href="#/jogo/${i.game_id}">${logo(i.away_abbrev, 'sm')} ${esc(i.away_abbrev)} @ ${esc(i.home_abbrev)} ${logo(i.home_abbrev, 'sm')}</a>
+      <span class="muted small">${isReady ? (i.finished ? `Encerrado · ${fmtDate(i.game_date)}` : '<span class="badge live">Ao vivo</span>') : when(i)}</span>
+      ${isMine ? `<span class="watch-tools">
+          ${isReady ? `<a class="link small" href="#/jogo/${i.game_id}">Registrar</a>` : ''}
+          <button class="danger small" data-unwatch="${i.game_id}" aria-label="Tirar da watchlist">✕</button>
+        </span>` : ''}
+    </li>`;
+  $view.innerHTML = `
+    <div class="watch-page">
+      <p style="margin-top:1.5rem"><a href="#/u/${esc(username)}">← Perfil de ${esc(username)}</a></p>
+      <h1>${isMine ? 'Sua watchlist' : `Watchlist de ${esc(username)}`}</h1>
+      <p class="muted small">Jogos marcados para ver depois. O placar fica escondido aqui.</p>
+      ${!items.length ? `<p class="empty">${isMine ? 'Nada por aqui. Na página de qualquer jogo, clique em "Quero ver".' : 'Nenhum jogo na watchlist.'}</p>` : ''}
+      ${ready.length ? `<h2>Já dá para assistir (${ready.length})</h2><ol class="watch-list">${ready.map((i) => row(i, true)).join('')}</ol>` : ''}
+      ${upcoming.length ? `<h2>Ainda vão acontecer (${upcoming.length})</h2><ol class="watch-list">${upcoming.map((i) => row(i, false)).join('')}</ol>` : ''}
+    </div>`;
+  $view.querySelectorAll('[data-unwatch]').forEach((b) => b.addEventListener('click', async () => {
+    await api('DELETE', `/api/watchlist/${b.dataset.unwatch}`);
+    render();
+  }));
 }
 
 // ---------- listas ----------
@@ -1095,6 +1159,7 @@ async function render() {
     else if (section === 'dia' && /^\d{4}-\d{2}-\d{2}$/.test(arg)) await viewSchedule(arg);
     else if (section === 'time' && TEAMS[arg]) await viewTeam(arg);
     else if (section === 'u' && arg && sub === 'rede') await viewNetwork(decodeURIComponent(arg));
+    else if (section === 'u' && arg && sub === 'watchlist') await viewWatchlist(decodeURIComponent(arg));
     else if (section === 'u' && arg) await viewUser(decodeURIComponent(arg));
     else if (section === 'feed') await viewFeed();
     else if (section === 'notificacoes') await viewNotifications();

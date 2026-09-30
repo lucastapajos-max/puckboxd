@@ -201,6 +201,8 @@ function createMock() {
   const abbrevs = Object.keys(TEAMS);
   const SEASON_START = Date.UTC(2025, 9, 7); // 07/10/2025
   const PER_DAY = 6;
+  // Vai até bem depois de hoje, para ter jogos futuros (watchlist, agenda) no modo mock.
+  const DAYS = 450;
   const DAY = 86400e3;
   const names = ['Matthews', 'McDavid', 'MacKinnon', 'Kucherov', 'Pastrnak', 'Draisaitl', 'Makar', 'Hughes', 'Eichel', 'Tkachuk', 'Marner', 'Kaprizov'];
 
@@ -277,12 +279,12 @@ function createMock() {
   return {
     async schedule(date) {
       const d = dayIndex(date);
-      if (d < 0 || d > 190) return { date, games: [] };
+      if (d < 0 || d >= DAYS) return { date, games: [] };
       return { date, games: Array.from({ length: PER_DAY }, (_, s) => normalizeGame(build(d * PER_DAY + s))) };
     },
     async game(id) {
       const n = numberOf(id);
-      if (!String(id).startsWith('202502') || n < 0 || n >= 191 * PER_DAY) throw new NhlError(404, 'Jogo não encontrado');
+      if (!String(id).startsWith('202502') || n < 0 || n >= DAYS * PER_DAY) throw new NhlError(404, 'Jogo não encontrado');
       return normalizeLanding(build(n));
     },
     async players(id) {
@@ -306,7 +308,7 @@ function createMock() {
     },
     async teamSeason(abbrev) {
       const games = [];
-      for (let n = 0; n < 191 * PER_DAY; n++) {
+      for (let n = 0; n < DAYS * PER_DAY; n++) {
         const g = build(n);
         if (g.awayTeam.abbrev === abbrev || g.homeTeam.abbrev === abbrev) games.push(normalizeGame(g));
       }

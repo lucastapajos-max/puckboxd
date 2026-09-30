@@ -368,3 +368,14 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
 .photo-edit { -webkit-tap-highlight-color: transparent; }
 .photo-edit:focus { outline: none; }
 .photo-edit:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+
+/* ---------- watchlist ---------- */
+.ico { width: 1em; height: 1em; vertical-align: -.12em; }
+.badge.watch { background: transparent; color: var(--star); border: 1px solid var(--star); display: inline-flex; align-items: center; gap: .25rem; }
+.watch-btn { display: inline-flex; align-items: center; gap: .4rem; }
+.watch-btn[aria-pressed='true'] { color: var(--star); border-color: var(--star); }
+.watch-page { max-width: 720px; }
+.watch-list { list-style: none; padding: 0; margin: 0; }
+.watch-item { display: flex; align-items: center; gap: .8rem; padding: .6rem 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.watch-game { font-weight: 600; display: inline-flex; align-items: center; gap: .35rem; }
+.watch-tools { margin-left: auto; display: inline-flex; align-items: center; gap: .6rem; }

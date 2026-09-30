@@ -16,6 +16,7 @@ Nome provisório. Troque à vontade.
 - **Notificações**: sino no topo com contador (atualiza a cada minuto) para novo seguidor, curtida, comentário na sua review e resposta numa review em que você comentou. Descurtir, deixar de seguir ou apagar o comentário tira o aviso.
 - **Foto de perfil**: upload de JPG, PNG ou WebP, recortada e reduzida no navegador para 256×256 antes de enviar. Aparece no topo, no perfil, nas reviews e nos comentários, junto com o logo do time do coração.
 - **Tema claro e escuro**: botão no topo; sem escolha, segue o sistema. Os logos da NHL trocam para a versão certa de cada fundo.
+- **Watchlist ("Quero ver")**: marque qualquer jogo, inclusive os que ainda vão acontecer. A página separa "Já dá para assistir" de "Ainda vão acontecer" e nunca mostra placar. Jogo da watchlist fica com o placar escondido também na agenda e na página do jogo. Registrar o jogo tira ele da lista. É pública, no perfil.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -52,6 +53,7 @@ O app detecta o Railway sozinho: grava o banco no volume, liga cookies `Secure` 
 src/server.js   sobe o servidor
 src/app.js      rotas HTTP, autenticação, diário, feed
 src/social.js   listas, seguidores, curtidas, comentários e notificações
+src/watchlist.js jogos marcados para ver depois
 src/http.js     erros HTTP e leitura de JSON
 src/nhl.js      cliente da API da NHL: cache em memória, normalização, mock
 src/db.js       schema SQLite (node:sqlite, embutido no Node)
@@ -77,5 +79,4 @@ Quando alguém registra um jogo, o servidor busca o jogo na NHL e grava um retra
 ## Próximos passos que fazem sentido
 
 - Curtir listas
-- Watchlist para jogos antigos (a API tem temporadas passadas via `/v1/club-schedule-season/{time}/{temporada}`)
 - Busca de jogos por confronto

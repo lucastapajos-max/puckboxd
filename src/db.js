@@ -149,6 +149,18 @@ export function openDb(file) {
   if (!new Set(db.prepare('PRAGMA table_info(users)').all().map((c) => c.name)).has('avatar_at')) {
     db.exec('ALTER TABLE users ADD COLUMN avatar_at TEXT');
   }
+  // Watchlist ("quero ver"): aceita jogos futuros, então o retrato do jogo guarda também o horário.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS watchlist (
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      game_id    INTEGER NOT NULL REFERENCES games(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, game_id)
+    );
+  `);
+  if (!new Set(db.prepare('PRAGMA table_info(games)').all().map((c) => c.name)).has('start_utc')) {
+    db.exec('ALTER TABLE games ADD COLUMN start_utc TEXT');
+  }
   if (!new Set(db.prepare('PRAGMA table_info(logs)').all().map((c) => c.name)).has('edited_at')) {
     db.exec('ALTER TABLE logs ADD COLUMN edited_at TEXT');
   }

@@ -8,6 +8,7 @@ import { NhlError } from './nhl.js';
 import { isTeam } from './teams.js';
 import { HttpError, readJson } from './http.js';
 import { createSocial } from './social.js';
+import { createWatchlist } from './watchlist.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -96,10 +97,10 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     ),
     deleteSession: db.prepare('DELETE FROM sessions WHERE token = ?'),
     upsertGame: db.prepare(
-      `INSERT INTO games (id, game_date, season, game_type, away_abbrev, home_abbrev, away_score, home_score, last_period, venue)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET away_score = excluded.away_score, home_score = excluded.home_score,
-         last_period = excluded.last_period, updated_at = datetime('now')`,
+      `INSERT INTO games (id, game_date, season, game_type, away_abbrev, home_abbrev, away_score, home_score, last_period, venue, start_utc)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET game_date = excluded.game_date, away_score = excluded.away_score, home_score = excluded.home_score,
+         last_period = excluded.last_period, start_utc = COALESCE(excluded.start_utc, start_utc), updated_at = datetime('now')`,
     ),
     insertLog: db.prepare(
       `INSERT INTO logs (user_id, game_id, watched_on, rating, review, liked, spoilers, rewatch, how,
@@ -219,7 +220,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
   function snapshotGame(game) {
     q.upsertGame.run(
       game.id, game.date, game.season, game.gameType, game.away.abbrev, game.home.abbrev,
-      game.away.score, game.home.score, game.state === 'final' ? game.lastPeriod : null, game.venue,
+      game.away.score, game.home.score, game.state === 'final' ? game.lastPeriod : null, game.venue, game.startTimeUTC,
     );
   }
 
@@ -229,6 +230,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
   const route = (method, pattern, handler) => routes.push({ method, pattern, handler });
 
   const social = createSocial({ db, nhl, route, currentUser, requireUser, snapshotGame, userByName: q.userByName });
+  const watchlist = createWatchlist({ db, nhl, route, currentUser, requireUser, snapshotGame, userByName: q.userByName });
 
   route('GET', /^\/api\/me$/, (req) => ({ user: currentUser(req) }));
 
@@ -325,7 +327,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     const data = await nhl.schedule(date);
     const user = currentUser(req);
     const logged = user ? new Set(q.loggedGameIds.all(user.id).map((r) => r.game_id)) : new Set();
-    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id) })) };
+    const watching = watchlist.idsOf(user?.id);
+    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id), inWatchlist: watching.has(g.id) })) };
   });
 
   route('GET', /^\/api\/teams\/([A-Z]{3})$/, async (req, _res, [abbrev]) => {
@@ -333,7 +336,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     const data = await nhl.teamSeason(abbrev);
     const user = currentUser(req);
     const logged = user ? new Set(q.loggedGameIds.all(user.id).map((r) => r.game_id)) : new Set();
-    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id) })) };
+    const watching = watchlist.idsOf(user?.id);
+    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id), inWatchlist: watching.has(g.id) })) };
   });
 
   route('GET', /^\/api\/games\/(\d{10})$/, async (req, _res, [id]) => {
@@ -350,6 +354,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
         mvpVotes: q.gameMvpVotes.all(game.id),
       },
       myLogs: user ? q.myLogsForGame.all(game.id, user.id) : [],
+      inWatchlist: watchlist.has(user?.id, game.id),
     };
   });
 
@@ -396,6 +401,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     const { game, fields } = await readLogFields(body, gameId);
     snapshotGame(game);
     const { lastInsertRowid } = q.insertLog.run(user.id, game.id, ...fields);
+    watchlist.removeGame(user.id, game.id); // viu o jogo: sai do "quero ver"
+
     return { log: q.logById.get(lastInsertRowid) };
   });
 
@@ -423,6 +430,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     return {
       user: { ...q.userById.get(user.id), ...social.followInfo(user.id, currentUser(req)?.id) },
       lists: social.userLists(user.id),
+      watchlistCount: watchlist.count(user.id),
       stats: {
         ...q.userStats.get(user.id),
         histogram: Object.fromEntries(q.userRatingHistogram.all(user.id).map((r) => [r.rating, r.n])),
