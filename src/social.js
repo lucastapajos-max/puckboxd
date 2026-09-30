@@ -63,6 +63,24 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     ),
     deleteComment: db.prepare('DELETE FROM comments WHERE id = ?'),
 
+    // notificações
+    notify: db.prepare('INSERT INTO notifications (user_id, actor_id, type, log_id, comment_id) VALUES (?, ?, ?, ?, ?)'),
+    unnotify: db.prepare('DELETE FROM notifications WHERE user_id = ? AND actor_id = ? AND type = ? AND log_id IS ?'),
+    threadCommenters: db.prepare('SELECT DISTINCT user_id FROM comments WHERE log_id = ? AND user_id NOT IN (?, ?)'),
+    notifications: db.prepare(
+      `SELECT n.id, n.type, n.created_at, n.read_at, n.log_id, a.username AS actor, c.body AS comment,
+              ow.username AS log_owner, l.game_id, ${GAME_COLS}
+       FROM notifications n
+       JOIN users a ON a.id = n.actor_id
+       LEFT JOIN comments c ON c.id = n.comment_id
+       LEFT JOIN logs l ON l.id = n.log_id
+       LEFT JOIN users ow ON ow.id = l.user_id
+       LEFT JOIN games g ON g.id = l.game_id
+       WHERE n.user_id = ? ORDER BY n.id DESC LIMIT 60`,
+    ),
+    unreadCount: db.prepare('SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL'),
+    markRead: db.prepare("UPDATE notifications SET read_at = datetime('now') WHERE user_id = ? AND read_at IS NULL"),
+
     // listas
     createList: db.prepare('INSERT INTO lists (user_id, title, description, ranked) VALUES (?, ?, ?, ?)'),
     updateList: db.prepare("UPDATE lists SET title = ?, description = ?, ranked = ?, updated_at = datetime('now') WHERE id = ?"),
@@ -180,14 +198,18 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     const me = requireUser(req);
     const target = findUser(username);
     if (target.id === me.id) throw new HttpError(400, 'Você não pode seguir a si mesmo');
-    q.follow.run(me.id, target.id);
+    if (q.follow.run(me.id, target.id).changes) {
+      // Um aviso por pessoa: seguir e desseguir várias vezes não empilha avisos.
+      q.unnotify.run(target.id, me.id, 'follow', null);
+      q.notify.run(target.id, me.id, 'follow', null, null);
+    }
     return followInfo(target.id, me.id);
   });
 
   route('DELETE', /^\/api\/users\/([A-Za-z0-9_]+)\/follow$/, (req, _res, [username]) => {
     const me = requireUser(req);
     const target = findUser(username);
-    q.unfollow.run(me.id, target.id);
+    if (q.unfollow.run(me.id, target.id).changes) q.unnotify.run(target.id, me.id, 'follow', null);
     return followInfo(target.id, me.id);
   });
 
@@ -219,23 +241,28 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     const me = requireUser(req);
     const { user_id } = findLog(id);
     if (user_id === me.id) throw new HttpError(400, 'Não dá para curtir a própria review');
-    q.like.run(me.id, Number(id));
+    if (q.like.run(me.id, Number(id)).changes) q.notify.run(user_id, me.id, 'like', Number(id), null);
     return { like_count: q.likeCount.get(Number(id)).n, liked_by_me: true };
   });
 
   route('DELETE', /^\/api\/logs\/(\d+)\/like$/, (req, _res, [id]) => {
     const me = requireUser(req);
-    findLog(id);
-    q.unlike.run(me.id, Number(id));
+    const { user_id } = findLog(id);
+    if (q.unlike.run(me.id, Number(id)).changes) q.unnotify.run(user_id, me.id, 'like', Number(id));
     return { like_count: q.likeCount.get(Number(id)).n, liked_by_me: false };
   });
 
   route('POST', /^\/api\/logs\/(\d+)\/comments$/, async (req, _res, [id]) => {
     const me = requireUser(req);
-    findLog(id);
+    const { user_id: owner } = findLog(id);
     const body = cleanText((await readJson(req)).body, 1000);
     if (!body) throw new HttpError(400, 'Comentário vazio');
-    q.addComment.run(Number(id), me.id, body);
+    const commentId = Number(q.addComment.run(Number(id), me.id, body).lastInsertRowid);
+    // Avisa o dono da review e quem mais comentou nela (menos quem acabou de comentar).
+    if (owner !== me.id) q.notify.run(owner, me.id, 'comment', Number(id), commentId);
+    for (const { user_id } of q.threadCommenters.all(Number(id), me.id, owner)) {
+      q.notify.run(user_id, me.id, 'reply', Number(id), commentId);
+    }
     return { comments: q.comments.all(Number(id)) };
   });
 
@@ -319,6 +346,24 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     const list = ownList(req, id);
     q.deleteList.run(list.id);
     return { ok: true };
+  });
+
+  // ---------- notificações ----------
+
+  route('GET', /^\/api\/notifications\/count$/, (req) => {
+    const me = currentUser(req);
+    return { unread: me ? q.unreadCount.get(me.id).n : 0 };
+  });
+
+  route('GET', /^\/api\/notifications$/, (req) => {
+    const me = requireUser(req);
+    return { items: q.notifications.all(me.id), unread: q.unreadCount.get(me.id).n };
+  });
+
+  route('POST', /^\/api\/notifications\/read$/, (req) => {
+    const me = requireUser(req);
+    q.markRead.run(me.id);
+    return { unread: 0 };
   });
 
   return { decorateLogs, followInfo, userLists, recentLists, listsWithGame };

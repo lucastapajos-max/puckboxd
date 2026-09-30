@@ -119,6 +119,21 @@ export function openDb(file) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS comments_log ON comments(log_id, id);
+
+    -- Avisos para user_id sobre algo que actor_id fez.
+    -- follow: te seguiu · like: curtiu sua review · comment: comentou na sua review
+    -- reply: comentou numa review em que você também comentou
+    CREATE TABLE IF NOT EXISTS notifications (
+      id         INTEGER PRIMARY KEY,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      actor_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type       TEXT NOT NULL CHECK (type IN ('follow', 'like', 'comment', 'reply')),
+      log_id     INTEGER REFERENCES logs(id) ON DELETE CASCADE,
+      comment_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      read_at    TEXT
+    );
+    CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, id DESC);
   `);
   return db;
 }

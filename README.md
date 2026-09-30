@@ -13,6 +13,7 @@ Nome provisório. Troque à vontade.
 - **Listas**: "Melhores jogos de playoff que eu vi", em ranking numerado ou não, com nota por jogo. Dá para criar e adicionar pela página do jogo, ou montar e reordenar pela própria lista.
 - **Seguir pessoas**: aba "Seguindo" com o que quem você segue registrou, sugestões de quem seguir e página de seguidores.
 - **Curtir e comentar reviews**: cada review tem página própria com comentários. Quem escreveu a review pode apagar comentários nela.
+- **Notificações**: sino no topo com contador (atualiza a cada minuto) para novo seguidor, curtida, comentário na sua review e resposta numa review em que você comentou. Descurtir, deixar de seguir ou apagar o comentário tira o aviso.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -48,7 +49,7 @@ O app detecta o Railway sozinho: grava o banco no volume, liga cookies `Secure` 
 ```
 src/server.js   sobe o servidor
 src/app.js      rotas HTTP, autenticação, diário, feed
-src/social.js   listas, seguidores, curtidas e comentários
+src/social.js   listas, seguidores, curtidas, comentários e notificações
 src/http.js     erros HTTP e leitura de JSON
 src/nhl.js      cliente da API da NHL: cache em memória, normalização, mock
 src/db.js       schema SQLite (node:sqlite, embutido no Node)
@@ -73,7 +74,6 @@ Quando alguém registra um jogo, o servidor busca o jogo na NHL e grava um retra
 
 ## Próximos passos que fazem sentido
 
-- Notificações (novo seguidor, curtida, comentário)
 - Curtir listas
 - Watchlist para jogos antigos (a API tem temporadas passadas via `/v1/club-schedule-season/{time}/{temporada}`)
 - Busca de jogos por confronto

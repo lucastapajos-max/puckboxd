@@ -180,3 +180,55 @@ test('jogo que ainda não começou não entra em lista', async () => {
   assert.match((await res.json()).error, /já começaram/);
   app.close();
 });
+
+test('notificações: seguir, curtir, comentar, responder, ler e desfazer', async () => {
+  const dono = await user('dono_n');
+  const fa = await user('fa_n');
+  const outro = await user('outro_n');
+  const [g] = await gamesOn('2025-11-08');
+  const logId = (await dono('POST', '/api/logs', { gameId: g.id, rating: 8, review: 'jogão' })).body.log.id;
+  const count = async (c) => (await c('GET', '/api/notifications/count')).body.unread;
+
+  assert.equal(await count(client()), 0, 'visitante sem login recebe 0');
+  assert.equal((await client()('GET', '/api/notifications')).status, 401);
+
+  // seguir, desseguir e seguir de novo gera um aviso só
+  await fa('POST', '/api/users/dono_n/follow');
+  await fa('DELETE', '/api/users/dono_n/follow');
+  assert.equal(await count(dono), 0, 'desseguir apaga o aviso');
+  await fa('POST', '/api/users/dono_n/follow');
+  await fa('POST', '/api/users/dono_n/follow');
+  assert.equal(await count(dono), 1);
+
+  await fa('POST', `/api/logs/${logId}/like`);
+  await fa('POST', `/api/logs/${logId}/like`);
+  assert.equal(await count(dono), 2, 'curtir de novo não duplica');
+
+  await fa('POST', `/api/logs/${logId}/comments`, { body: 'concordo' });
+  assert.equal(await count(dono), 3);
+  // dono responde: quem comentou recebe "reply"; o dono não recebe aviso de si mesmo
+  await dono('POST', `/api/logs/${logId}/comments`, { body: 'valeu' });
+  assert.equal(await count(dono), 3);
+  // um terceiro comenta: dono recebe "comment" e o fã recebe "reply"
+  await outro('POST', `/api/logs/${logId}/comments`, { body: 'discordo' });
+  assert.equal(await count(dono), 4);
+
+  const faList = (await fa('GET', '/api/notifications')).body.items;
+  assert.deepEqual(faList.map((n) => [n.type, n.actor]), [['reply', 'outro_n'], ['reply', 'dono_n']]);
+  assert.equal(faList[0].log_owner, 'dono_n');
+  assert.equal(faList[0].comment, 'discordo');
+
+  const { items } = (await dono('GET', '/api/notifications')).body;
+  assert.deepEqual(items.map((n) => n.type), ['comment', 'comment', 'like', 'follow']);
+  assert.equal(items[2].game_id, g.id);
+
+  // descurtir apaga o aviso de curtida; apagar comentário apaga o aviso dele
+  await fa('DELETE', `/api/logs/${logId}/like`);
+  const outroComment = (await dono('GET', `/api/logs/${logId}`)).body.comments.find((c) => c.username === 'outro_n');
+  await outro('DELETE', `/api/comments/${outroComment.id}`);
+  assert.deepEqual((await dono('GET', '/api/notifications')).body.items.map((n) => n.type), ['comment', 'follow']);
+
+  await dono('POST', '/api/notifications/read');
+  assert.equal(await count(dono), 0);
+  assert.equal((await dono('GET', '/api/notifications')).body.items.length, 2, 'lidas continuam na lista');
+});

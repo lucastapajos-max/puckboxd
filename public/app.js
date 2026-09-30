@@ -197,6 +197,8 @@ function bindFollow(root = $view, after = null) {
 
 function renderSession() {
   document.getElementById('nav-feed').hidden = !me;
+  document.getElementById('nav-bell').hidden = !me;
+  refreshBell();
   $session.innerHTML = me
     ? `<a href="#/u/${esc(me.username)}">${esc(me.username)}</a> <button class="ghost" id="logout">Sair</button>`
     : `<a href="#/entrar" class="btn primary">Entrar</a>`;
@@ -866,6 +868,68 @@ async function viewList(id) {
   draw();
 }
 
+// ---------- notificações ----------
+
+const $bellCount = document.getElementById('bell-count');
+
+async function refreshBell() {
+  if (!me) { $bellCount.hidden = true; return; }
+  try {
+    const { unread } = await api('GET', '/api/notifications/count');
+    $bellCount.hidden = unread === 0;
+    $bellCount.textContent = unread > 99 ? '99+' : unread;
+    document.title = unread ? `(${unread}) Puckboxd` : 'Puckboxd';
+  } catch { /* sem rede: tenta de novo no próximo ciclo */ }
+}
+
+// Confere a cada minuto, só com a aba visível.
+setInterval(() => document.visibilityState === 'visible' && refreshBell(), 60e3);
+document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && refreshBell());
+
+// created_at vem do SQLite em UTC, no formato "AAAA-MM-DD HH:MM:SS".
+function timeAgo(sqlDate) {
+  const s = (Date.now() - Date.parse(sqlDate.replace(' ', 'T') + 'Z')) / 1000;
+  if (s < 60) return 'agora';
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+  if (s < 7 * 86400) { const d = Math.floor(s / 86400); return `há ${d} ${d === 1 ? 'dia' : 'dias'}`; }
+  return fmtDate(sqlDate.slice(0, 10));
+}
+
+function notificationHtml(n) {
+  const who = `<a href="#/u/${esc(n.actor)}"><b>${esc(n.actor)}</b></a>`;
+  const game = n.away_abbrev ? `${esc(n.away_abbrev)} @ ${esc(n.home_abbrev)}` : 'um jogo';
+  const snippet = n.comment ? `<p class="n-snippet">“${esc(n.comment.length > 140 ? n.comment.slice(0, 140) + '…' : n.comment)}”</p>` : '';
+  const text = {
+    follow: `${who} começou a seguir você.`,
+    like: `${who} curtiu sua review de <a href="#/review/${n.log_id}">${game}</a>.`,
+    comment: `${who} comentou na sua review de <a href="#/review/${n.log_id}">${game}</a>.`,
+    reply: `${who} também comentou na review de ${esc(n.log_owner)} sobre <a href="#/review/${n.log_id}">${game}</a>.`,
+  }[n.type];
+  const icon = { follow: '+', like: '♥', comment: '✎', reply: '✎' }[n.type];
+  return `<li class="notification ${n.read_at ? '' : 'unread'}">
+    <span class="n-icon n-${n.type}">${icon}</span>
+    <div class="n-body">${text}${snippet}<span class="muted small">${timeAgo(n.created_at)}</span></div>
+  </li>`;
+}
+
+async function viewNotifications() {
+  if (!me) { location.hash = '#/entrar'; return; }
+  $view.innerHTML = '<div class="loading">Carregando…</div>';
+  const { items, unread } = await api('GET', '/api/notifications');
+  $view.innerHTML = `
+    <div class="notifications-page">
+      <h1 style="margin-top:1.5rem">Notificações</h1>
+      ${items.length ? `<ol class="notifications">${items.map(notificationHtml).join('')}</ol>`
+        : '<p class="empty">Nada por aqui ainda. Quando alguém seguir você, curtir ou comentar suas reviews, aparece aqui.</p>'}
+    </div>`;
+  // Abrir a página marca tudo como lido; o destaque das novas fica até sair da tela.
+  if (unread) {
+    await api('POST', '/api/notifications/read');
+    refreshBell();
+  }
+}
+
 // ---------- roteador ----------
 
 async function render() {
@@ -878,6 +942,7 @@ async function render() {
     else if (section === 'u' && arg && sub === 'rede') await viewNetwork(decodeURIComponent(arg));
     else if (section === 'u' && arg) await viewUser(decodeURIComponent(arg));
     else if (section === 'feed') await viewFeed();
+    else if (section === 'notificacoes') await viewNotifications();
     else if (section === 'review' && /^\d+$/.test(arg)) await viewReview(arg);
     else if (section === 'lista' && /^\d+$/.test(arg)) await viewList(arg);
     else if (section === 'listas' && arg === 'nova') viewNewList();
@@ -888,6 +953,7 @@ async function render() {
     $view.innerHTML = `<p class="empty">${esc(e.message)}</p>`;
   }
   window.scrollTo(0, 0);
+  if (section !== 'notificacoes') refreshBell();
 }
 
 window.addEventListener('hashchange', render);
