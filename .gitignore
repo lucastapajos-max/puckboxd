@@ -1,0 +1,3 @@
+# o .gitignore da raiz ignora package.json; aqui ele faz parte do app
+!package.json
+data/

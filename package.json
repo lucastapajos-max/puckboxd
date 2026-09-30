@@ -1,0 +1,16 @@
+{
+  "name": "puckboxd",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Diário e reviews de jogos da NHL, no estilo Letterboxd",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "mock": "NHL_MOCK=1 node --disable-warning=ExperimentalWarning src/server.js",
+    "test": "NHL_MOCK=1 node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  }
+}
