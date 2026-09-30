@@ -34,7 +34,7 @@ npm run mock     # dados falsos, funciona offline
 npm test
 ```
 
-Abre em http://localhost:3000. Variáveis: `PORT`, `DB_FILE` (padrão `data/puckboxd.db`), `NHL_MOCK=1`, `NODE_ENV=production` (cookie `Secure`), `TRUST_PROXY=1` (atrás de proxy reverso fora do Railway).
+Abre em http://localhost:3000. Variáveis: `PORT`, `DB_FILE` (padrão `data/puckboxd.db`), `NHL_MOCK=1`, `NODE_ENV=production` (cookie `Secure`), `TRUST_PROXY=1` (atrás de proxy reverso fora do Railway), `ADMIN_USERS` (quem pode baixar o backup), `BACKUP_DIR` (padrão: pasta `backups` ao lado do banco).
 
 ## Publicando no Railway
 
@@ -46,7 +46,10 @@ O repositório já vem configurado (`railway.json` e `.nvmrc`).
 
 O app detecta o Railway sozinho: grava o banco no volume, liga cookies `Secure` e lê o IP real para o limite de tentativas de login. Cada push na `main` gera um deploy novo.
 
-**Backup:** o banco inteiro é o arquivo `/data/puckboxd.db`. Vale baixar uma cópia de vez em quando.
+**Backup:**
+- Automático: uma cópia por dia em `/data/backups` (no mesmo volume), guardando as últimas 7.
+- Para ter uma cópia fora do Railway: em **Variables**, crie `ADMIN_USERS` com o seu nome de usuário (vários separados por vírgula). Logado com esse usuário, aparece **Baixar backup do banco** no seu perfil (ou acesse `/api/admin/backup`). O arquivo é um banco SQLite completo.
+- Para restaurar: pare o serviço, troque `/data/puckboxd.db` pela cópia e suba de novo.
 
 ## Como está montado
 

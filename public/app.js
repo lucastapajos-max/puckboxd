@@ -563,6 +563,7 @@ async function viewUser(username) {
         </p>
         ${me && !isMe ? followButton(user.username, user.is_following) : ''}
         ${isMe ? '<button class="link small profile-logout" id="profile-logout">Sair da conta</button>' : ''}
+        ${isMe && me.is_admin ? '<a class="link small admin-backup" href="/api/admin/backup" download>Baixar backup do banco</a>' : ''}
       </div>
       <div class="stat-row">
         <div><b>${stats.games}</b><span>Jogos</span></div>
@@ -699,7 +700,8 @@ function viewAuth() {
     const f = new FormData(e.target);
     const action = e.submitter?.value === 'signup' ? 'signup' : 'login';
     try {
-      ({ user: me } = await api('POST', `/api/${action}`, { username: f.get('username'), password: f.get('password') }));
+      await api('POST', `/api/${action}`, { username: f.get('username'), password: f.get('password') });
+      ({ user: me } = await api('GET', '/api/me')); // traz também se é administrador
       renderSession();
       location.hash = returnTo;
     } catch (err) {

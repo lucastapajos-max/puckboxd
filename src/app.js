@@ -2,6 +2,7 @@
 
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { createReadStream, statSync, unlinkSync } from 'node:fs';
 import { join, normalize, extname } from 'node:path';
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { NhlError } from './nhl.js';
@@ -72,7 +73,13 @@ function rateLimiter({ max, windowMs }) {
   };
 }
 
-export function createApp({ db, nhl, publicDir, secureCookies = false, trustProxy = false, authLimit = { max: 20, windowMs: 15 * 60e3 } }) {
+export function createApp({
+  db, nhl, publicDir, secureCookies = false, trustProxy = false, authLimit = { max: 20, windowMs: 15 * 60e3 },
+  backups = null, admins = [],
+}) {
+  // Administradores: nomes de usuário na variável ADMIN_USERS (separados por vírgula).
+  const adminSet = new Set(admins.map((a) => a.toLowerCase()));
+  const isAdmin = (user) => Boolean(user && adminSet.has(user.username.toLowerCase()));
   const authAllowed = rateLimiter(authLimit);
   // Atrás do proxy do Railway, o IP real vem no primeiro item do X-Forwarded-For.
   const clientIp = (req) =>
@@ -241,7 +248,27 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
   }
   createSearch({ db, nhl, route, currentUser, decorateGames });
 
-  route('GET', /^\/api\/me$/, (req) => ({ user: currentUser(req) }));
+  route('GET', /^\/api\/me$/, (req) => {
+    const user = currentUser(req);
+    return { user: user && { ...user, is_admin: isAdmin(user) } };
+  });
+
+  // Baixa uma cópia atual do banco inteiro. Só para administradores logados.
+  route('GET', /^\/api\/admin\/backup$/, (req, res) => {
+    const user = requireUser(req);
+    if (!isAdmin(user)) throw new HttpError(403, 'Só administradores podem baixar o backup');
+    if (!backups) throw new HttpError(503, 'Backup não configurado');
+    const file = backups.snapshot();
+    res.writeHead(200, {
+      'content-type': 'application/vnd.sqlite3',
+      'content-length': statSync(file).size,
+      'content-disposition': `attachment; filename="puckboxd-${backups.stamp()}.db"`,
+      'cache-control': 'no-store',
+    });
+    const stream = createReadStream(file);
+    stream.on('close', () => { try { unlinkSync(file); } catch { /* já apagado */ } });
+    stream.pipe(res);
+  });
 
   route('POST', /^\/api\/signup$/, async (req, res) => {
     guardAuth(req);
@@ -497,7 +524,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
           const m = r.method === req.method && url.pathname.match(r.pattern);
           if (m) {
             const data = await r.handler(req, res, m.slice(1), url);
-            if (res.writableEnded) return; // a rota já respondeu (ex.: imagem)
+            if (res.writableEnded || res.headersSent) return; // a rota já respondeu (imagem, arquivo)
             res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
             res.end(JSON.stringify(data));
             return;

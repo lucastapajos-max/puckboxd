@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { openDb } from './db.js';
 import { createNhl } from './nhl.js';
 import { createApp } from './app.js';
+import { createBackups } from './backup.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT) || 3000;
@@ -17,6 +18,9 @@ if (onRailway && !volume && !process.env.DB_FILE) {
 }
 
 const db = openDb(dbFile);
+// Backups diários ao lado do banco (no Railway: /data/backups, dentro do volume).
+const backups = createBackups({ db, dir: process.env.BACKUP_DIR || join(dirname(dbFile), 'backups') });
+backups.start();
 const nhl = createNhl({ mock });
 const app = createApp({
   db,
@@ -24,6 +28,8 @@ const app = createApp({
   publicDir: join(root, 'public'),
   secureCookies: process.env.NODE_ENV === 'production' || onRailway,
   trustProxy: process.env.TRUST_PROXY === '1' || onRailway,
+  backups,
+  admins: (process.env.ADMIN_USERS || '').split(',').map((s) => s.trim()).filter(Boolean),
 });
 
 app.listen(port, () => {

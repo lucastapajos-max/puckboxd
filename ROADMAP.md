@@ -11,7 +11,8 @@ Onde paramos e o que dá para fazer depois. Atualizado em 30/09/2026.
 ## Antes de crescer (infra e segurança)
 
 - [ ] Plano pago no Railway (o teste gratuito acaba em 30 dias ou US$ 5)
-- [ ] Backup do banco: rota de administrador para baixar `/data/puckboxd.db`, ou cópia automática diária
+- [x] Backup do banco: cópia automática diária em `/data/backups` e download pelo perfil do administrador (`ADMIN_USERS`)
+- [ ] Backup fora do Railway automático (ex.: enviar a cópia diária para um armazenamento externo)
 - [ ] Recuperar senha (precisa de e-mail no cadastro e um serviço de envio)
 - [ ] Moderação: denunciar review/comentário, bloquear pessoa, papel de administrador para apagar conteúdo
 - [ ] Limite de frequência também para comentários e curtidas (hoje só login e cadastro têm)

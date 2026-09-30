@@ -419,3 +419,4 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
   .profile-collections { grid-template-columns: 1fr; gap: 0; }
   .pc-watch { order: -1; }
 }
+.admin-backup { display: inline-block; margin-top: .3rem; padding: 0; }
