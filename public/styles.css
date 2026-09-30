@@ -142,3 +142,10 @@ dialog::backdrop { background: rgba(0, 0, 0, .65); }
 
 .empty { color: var(--muted); padding: 2rem 0; text-align: center; }
 .loading { color: var(--muted); padding: 3rem 0; text-align: center; }
+
+/* escolha do espectador */
+.mvp-tag { font-size: .8rem; color: var(--star); border: 1px solid var(--line); border-radius: 4px; padding: 0 .4rem; }
+.ranking { list-style: none; counter-reset: r; padding: 0; margin: 0; }
+.ranking li { counter-increment: r; display: flex; gap: .5rem; align-items: center; padding: .4rem 0; border-bottom: 1px solid var(--line); }
+.ranking li::before { content: counter(r); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 1.1rem; min-width: 1.2rem; }
+.ranking .who { flex: 1; }

@@ -75,8 +75,9 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
          last_period = excluded.last_period, updated_at = datetime('now')`,
     ),
     insertLog: db.prepare(
-      `INSERT INTO logs (user_id, game_id, watched_on, rating, review, liked, spoilers, rewatch, how)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO logs (user_id, game_id, watched_on, rating, review, liked, spoilers, rewatch, how,
+                         mvp_player_id, mvp_name, mvp_team, mvp_position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     logById: db.prepare('SELECT * FROM logs WHERE id = ?'),
     deleteLog: db.prepare('DELETE FROM logs WHERE id = ? AND user_id = ?'),
@@ -87,7 +88,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
     ),
     gameHistogram: db.prepare('SELECT rating, COUNT(*) AS n FROM logs WHERE game_id = ? AND rating IS NOT NULL GROUP BY rating'),
     gameReviews: db.prepare(
-      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, u.username
+      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, l.mvp_name, l.mvp_team, u.username
        FROM logs l JOIN users u ON u.id = l.user_id
        WHERE l.game_id = ? AND l.review IS NOT NULL AND l.review <> ''
        ORDER BY l.created_at DESC LIMIT 50`,
@@ -114,7 +115,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
        ) GROUP BY team ORDER BY n DESC LIMIT 5`,
     ),
     feed: db.prepare(
-      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, u.username,
+      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.mvp_name, l.mvp_team, u.username,
               g.game_date, g.away_abbrev, g.home_abbrev, g.away_score, g.home_score, g.last_period
        FROM logs l JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id
        ORDER BY l.created_at DESC, l.id DESC LIMIT 30`,
@@ -131,6 +132,25 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
               COUNT(l.rating) AS rated, AVG(l.rating) AS avg
        FROM logs l JOIN games g ON g.id = l.game_id
        GROUP BY g.id HAVING rated >= ? ORDER BY avg DESC, rated DESC LIMIT 12`,
+    ),
+    // Escolha do espectador. Cada pessoa vale um voto por jogo, mesmo que tenha registrado o jogo mais de uma vez.
+    gameMvpVotes: db.prepare(
+      `SELECT mvp_player_id AS id, MAX(mvp_name) AS name, MAX(mvp_team) AS team, MAX(mvp_position) AS position,
+              COUNT(DISTINCT user_id) AS votes
+       FROM logs WHERE game_id = ? AND mvp_player_id IS NOT NULL
+       GROUP BY mvp_player_id ORDER BY votes DESC, name LIMIT 10`,
+    ),
+    userMvps: db.prepare(
+      `SELECT mvp_player_id AS id, MAX(mvp_name) AS name, MAX(mvp_team) AS team, MAX(mvp_position) AS position,
+              COUNT(DISTINCT game_id) AS games
+       FROM logs WHERE user_id = ? AND mvp_player_id IS NOT NULL
+       GROUP BY mvp_player_id ORDER BY games DESC, name LIMIT 10`,
+    ),
+    topMvps: db.prepare(
+      `SELECT mvp_player_id AS id, MAX(mvp_name) AS name, MAX(mvp_team) AS team, MAX(mvp_position) AS position,
+              COUNT(DISTINCT user_id || '-' || game_id) AS votes, COUNT(DISTINCT user_id) AS voters
+       FROM logs WHERE mvp_player_id IS NOT NULL
+       GROUP BY mvp_player_id ORDER BY votes DESC, voters DESC LIMIT 10`,
     ),
     gameAverages: (ids) =>
       db
@@ -236,10 +256,13 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
         ...stats,
         histogram: Object.fromEntries(q.gameHistogram.all(game.id).map((r) => [r.rating, r.n])),
         reviews: q.gameReviews.all(game.id),
+        mvpVotes: q.gameMvpVotes.all(game.id),
       },
       myLogs: user ? q.myLogsForGame.all(game.id, user.id) : [],
     };
   });
+
+  route('GET', /^\/api\/games\/(\d{10})\/players$/, async (_req, _res, [id]) => nhl.players(Number(id)));
 
   // --- diário ---
 
@@ -264,6 +287,14 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
     if (game.state === 'future') throw new HttpError(400, 'Esse jogo ainda não começou');
     if (watchedOn < game.date) throw new HttpError(400, 'A data em que assistiu não pode ser antes do jogo');
 
+    // Escolha do espectador: tem que ser alguém que jogou a partida.
+    let mvp = null;
+    if (body.mvpPlayerId != null && body.mvpPlayerId !== '') {
+      const { away, home } = await nhl.players(game.id);
+      mvp = [...away.players, ...home.players].find((p) => p.id === Number(body.mvpPlayerId));
+      if (!mvp) throw new HttpError(400, 'Esse jogador não participou do jogo');
+    }
+
     q.upsertGame.run(
       game.id, game.date, game.season, game.gameType, game.away.abbrev, game.home.abbrev,
       game.away.score, game.home.score, game.state === 'final' ? game.lastPeriod : null, game.venue,
@@ -271,6 +302,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
     const { lastInsertRowid } = q.insertLog.run(
       user.id, game.id, watchedOn, rating, review || null,
       body.liked ? 1 : 0, body.spoilers ? 1 : 0, body.rewatch ? 1 : 0, how,
+      mvp?.id ?? null, mvp?.name ?? null, mvp?.team ?? null, mvp?.position ?? null,
     );
     return { log: q.logById.get(lastInsertRowid) };
   });
@@ -292,6 +324,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
         ...q.userStats.get(user.id),
         histogram: Object.fromEntries(q.userRatingHistogram.all(user.id).map((r) => [r.rating, r.n])),
         topTeams: q.userTopTeams.all(user.id),
+        mvps: q.userMvps.all(user.id),
       },
       diary: q.diary.all(user.id, 50, page * 50),
     };
@@ -301,6 +334,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false }) {
     recent: q.feed.all(),
     popular: q.popular.all('-7 days'),
     topRated: q.topRated.all(2),
+    topMvps: q.topMvps.all(),
   }));
 
   // ---------- servidor ----------

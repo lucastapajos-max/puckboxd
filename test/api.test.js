@@ -116,3 +116,43 @@ test('time e estáticos', async () => {
   const res = await fetch(`${base}/../../etc/passwd`);
   assert.match(res.headers.get('content-type'), /text\/html/);
 });
+
+test('escolha do espectador: voto, validação e rankings', async () => {
+  const a = client();
+  const b = client();
+  await a('POST', '/api/signup', { username: 'fan_a', password: 'senha-forte' });
+  await b('POST', '/api/signup', { username: 'fan_b', password: 'senha-forte' });
+
+  const { body: day } = await a('GET', '/api/schedule/2025-11-10');
+  const [g1, g2] = day.games;
+  const { body: roster } = await a('GET', `/api/games/${g1.id}/players`);
+  assert.equal(roster.away.abbrev, g1.away.abbrev);
+  assert.ok(roster.home.players.length > 5);
+  assert.ok(!roster.home.players.some((p) => p.position === 'G' && p.number === 16), 'goleiro que não entrou fica de fora');
+  const star = roster.home.players[0];
+
+  // jogador de outro jogo é recusado
+  const { body: other } = await a('GET', `/api/games/${g2.id}/players`);
+  const outsider = [...other.away.players, ...other.home.players].find(
+    (p) => ![...roster.away.players, ...roster.home.players].some((q) => q.id === p.id),
+  );
+  assert.equal((await a('POST', '/api/logs', { gameId: g1.id, mvpPlayerId: outsider.id })).status, 400);
+
+  assert.equal((await a('POST', '/api/logs', { gameId: g1.id, rating: 8, mvpPlayerId: star.id, review: 'monstro' })).status, 200);
+  // registrar de novo não conta voto duplo
+  assert.equal((await a('POST', '/api/logs', { gameId: g1.id, rewatch: true, mvpPlayerId: star.id })).status, 200);
+  assert.equal((await b('POST', '/api/logs', { gameId: g1.id, mvpPlayerId: star.id })).status, 200);
+  assert.equal((await a('POST', '/api/logs', { gameId: g2.id, mvpPlayerId: other.away.players[0].id })).status, 200);
+
+  const { body: page } = await a('GET', `/api/games/${g1.id}`);
+  assert.deepEqual(page.community.mvpVotes.map((v) => [v.id, v.votes]), [[star.id, 2]]);
+  assert.equal(page.community.reviews[0].mvp_name, star.name);
+
+  const { body: prof } = await a('GET', '/api/users/fan_a');
+  assert.equal(prof.stats.mvps.length, 2);
+  assert.equal(prof.stats.mvps.find((m) => m.id === star.id).games, 1);
+
+  const { body: feed } = await a('GET', '/api/feed');
+  assert.equal(feed.topMvps[0].id, star.id);
+  assert.equal(feed.topMvps[0].votes, 2);
+});

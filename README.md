@@ -9,6 +9,7 @@ Nome provisório. Troque à vontade.
 - **Agenda por dia** com placar, navegação entre datas e grade dos 32 times
 - **Página do jogo**: placar, gols por período (com assistências e PP/SH), três estrelas, reviews da comunidade, média e histograma de notas
 - **Registro de jogo**: nota em meias estrelas, curtida, data em que assistiu, como assistiu (ao vivo, TV, reprise, ginásio), review com marcação de spoiler, "já tinha visto"
+- **Escolha do espectador**: no registro, você aponta quem foi o melhor jogador da partida na sua opinião (lista montada com o boxscore do jogo). A página do jogo mostra a votação, o perfil mostra os jogadores que você mais escolheu e a Comunidade tem o ranking geral. Uma pessoa vale um voto por jogo.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -46,6 +47,7 @@ Endpoints da NHL usados:
 | --- | --- |
 | Agenda do dia | `/v1/schedule/{data}` |
 | Página do jogo | `/v1/gamecenter/{id}/landing` |
+| Elenco da partida (escolha do espectador) | `/v1/gamecenter/{id}/boxscore` |
 | Calendário do time | `/v1/club-schedule-season/{time}/now` |
 
 Referência não oficial: https://github.com/Zmalski/NHL-API-Reference

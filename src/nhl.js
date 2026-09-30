@@ -63,6 +63,7 @@ function normalizeLanding(raw) {
         period: periodLabel(period.periodDescriptor),
         time: g.timeInPeriod ?? '',
         team: t(g.teamAbbrev),
+        playerId: g.playerId ?? null,
         scorer: t(g.name) || `${t(g.firstName)} ${t(g.lastName)}`.trim(),
         headshot: g.headshot ?? null,
         assists: (g.assists ?? []).map((a) => t(a.name) || `${t(a.firstName)} ${t(a.lastName)}`.trim()),
@@ -74,12 +75,58 @@ function normalizeLanding(raw) {
   }
   const stars = (raw.summary?.threeStars ?? []).map((s) => ({
     star: s.star,
+    playerId: s.playerId ?? null,
     name: t(s.name),
     team: t(s.teamAbbrev),
     position: s.position ?? '',
     headshot: s.headshot ?? null,
   }));
   return { ...game, goals, stars };
+}
+
+// Quem entrou no gelo, a partir de /gamecenter/{id}/boxscore.
+// Ordenado por pontos, com goleiros no fim de cada time.
+export function normalizeBoxscore(raw) {
+  const side = (key) => {
+    const abbrev = raw[key]?.abbrev ?? '';
+    const stats = raw.playerByGameStats?.[key] ?? {};
+    const skaters = [...(stats.forwards ?? []), ...(stats.defense ?? [])].map((p) => ({
+      id: p.playerId,
+      name: t(p.name),
+      team: abbrev,
+      position: p.position ?? '',
+      number: p.sweaterNumber ?? null,
+      goals: p.goals ?? 0,
+      assists: p.assists ?? 0,
+    }));
+    skaters.sort((a, b) => b.goals + b.assists - (a.goals + a.assists) || b.goals - a.goals);
+    const goalies = (stats.goalies ?? [])
+      .filter((p) => p.toi && p.toi !== '00:00')
+      .map((p) => ({
+        id: p.playerId,
+        name: t(p.name),
+        team: abbrev,
+        position: 'G',
+        number: p.sweaterNumber ?? null,
+        saves: p.saves ?? null,
+        shotsAgainst: p.shotsAgainst ?? null,
+      }));
+    return { abbrev, players: [...skaters, ...goalies].filter((p) => p.id && p.name) };
+  };
+  return { away: side('awayTeam'), home: side('homeTeam') };
+}
+
+// Se o boxscore falhar, monta a lista com quem aparece no resumo (gols e destaques).
+function playersFromLanding(game) {
+  const seen = new Map();
+  const add = (id, name, team, position = '') => id && !seen.has(id) && seen.set(id, { id, name, team, position, number: null });
+  game.goals.forEach((g) => add(g.playerId, g.scorer, g.team));
+  game.stars.forEach((s) => add(s.playerId, s.name, s.team, s.position));
+  const list = [...seen.values()];
+  return {
+    away: { abbrev: game.away.abbrev, players: list.filter((p) => p.team === game.away.abbrev) },
+    home: { abbrev: game.home.abbrev, players: list.filter((p) => p.team === game.home.abbrev) },
+  };
 }
 
 // ---------- cache ----------
@@ -127,6 +174,17 @@ export function createNhl({ mock = false } = {}) {
         return { date, games: (day?.games ?? []).map((g) => normalizeGame(g, date)) };
       }),
     game: (id) => cached(`game:${id}`, gameTtl, async () => normalizeLanding(await get(`/gamecenter/${id}/landing`))),
+    players(id) {
+      return cached(`players:${id}`, () => 3600e3, async () => {
+        try {
+          const box = normalizeBoxscore(await get(`/gamecenter/${id}/boxscore`));
+          if (box.away.players.length + box.home.players.length > 0) return box;
+        } catch (err) {
+          if (err instanceof NhlError && err.status === 404) throw err;
+        }
+        return playersFromLanding(await this.game(id));
+      });
+    },
     teamSeason: (abbrev) =>
       cached(`team:${abbrev}`, () => 10 * 60e3, async () => {
         const raw = await get(`/club-schedule-season/${abbrev}/now`);
@@ -226,6 +284,25 @@ function createMock() {
       const n = numberOf(id);
       if (!String(id).startsWith('202502') || n < 0 || n >= 191 * PER_DAY) throw new NhlError(404, 'Jogo não encontrado');
       return normalizeLanding(build(n));
+    },
+    async players(id) {
+      const g = await this.game(id);
+      if (g.state === 'future') return { away: { abbrev: g.away.abbrev, players: [] }, home: { abbrev: g.home.abbrev, players: [] } };
+      // Elenco falso fixo por time, no formato do boxscore real.
+      const roster = (abbrev) => {
+        const base = 8_000_000 + abbrevs.indexOf(abbrev) * 100;
+        const p = (k, position) => ({ playerId: base + k, sweaterNumber: k + 2, name: { default: `${'ABCDEFGHJKLM'[k % 12]}. ${names[(k + abbrevs.indexOf(abbrev)) % names.length]}` }, position, goals: k % 4 === 0 ? 1 : 0, assists: k % 3 === 0 ? 1 : 0, toi: '15:00' });
+        return {
+          forwards: [0, 1, 2, 3, 4, 5, 6, 7, 8].map((k) => p(k, ['C', 'L', 'R'][k % 3])),
+          defense: [9, 10, 11, 12].map((k) => p(k, 'D')),
+          goalies: [{ ...p(13, 'G'), saves: 28, shotsAgainst: 30 }, { ...p(14, 'G'), toi: '00:00' }],
+        };
+      };
+      return normalizeBoxscore({
+        awayTeam: { abbrev: g.away.abbrev },
+        homeTeam: { abbrev: g.home.abbrev },
+        playerByGameStats: { awayTeam: roster(g.away.abbrev), homeTeam: roster(g.home.abbrev) },
+      });
     },
     async teamSeason(abbrev) {
       const games = [];

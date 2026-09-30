@@ -31,3 +31,47 @@ test('campos localizados e estado', () => {
   assert.equal(normalizeGame({ ...scheduleGame, gameState: 'CRIT' }).state, 'live');
   assert.equal(normalizeGame({ ...scheduleGame, gameState: 'PPD' }).state, 'future');
 });
+
+test('boxscore vira lista de jogadores por time', async () => {
+  const { normalizeBoxscore } = await import('../src/nhl.js');
+  const box = normalizeBoxscore({
+    awayTeam: { abbrev: 'FLA' },
+    homeTeam: { abbrev: 'CAR' },
+    playerByGameStats: {
+      awayTeam: {
+        forwards: [
+          { playerId: 1, sweaterNumber: 16, name: { default: 'A. Barkov' }, position: 'C', goals: 0, assists: 1 },
+          { playerId: 2, sweaterNumber: 19, name: { default: 'M. Tkachuk' }, position: 'L', goals: 0, assists: 0 },
+        ],
+        defense: [{ playerId: 3, sweaterNumber: 42, name: { default: 'G. Forsling' }, position: 'D', goals: 1, assists: 0 }],
+        goalies: [
+          { playerId: 4, sweaterNumber: 25, name: { default: 'J. Markstrom' }, position: 'G', toi: '64:55', saves: 30, shotsAgainst: 30 },
+          { playerId: 5, sweaterNumber: 72, name: { default: 'S. Bobrovsky' }, position: 'G', toi: '00:00' },
+        ],
+      },
+      homeTeam: {},
+    },
+  });
+  assert.deepEqual(box.away.players.map((p) => p.name), ['G. Forsling', 'A. Barkov', 'M. Tkachuk', 'J. Markstrom']);
+  assert.equal(box.away.players[0].team, 'FLA');
+  assert.deepEqual(box.home, { abbrev: 'CAR', players: [] });
+});
+
+test('banco antigo ganha as colunas novas sem perder registros', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { openDb } = await import('../src/db.js');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const file = join(mkdtempSync(join(tmpdir(), 'pbx-')), 'old.db');
+  const old = new DatabaseSync(file);
+  old.exec(`CREATE TABLE logs (id INTEGER PRIMARY KEY, user_id INTEGER, game_id INTEGER, watched_on TEXT, rating INTEGER, review TEXT,
+    liked INTEGER DEFAULT 0, spoilers INTEGER DEFAULT 0, rewatch INTEGER DEFAULT 0, how TEXT, created_at TEXT);
+    INSERT INTO logs (user_id, game_id, watched_on, rating) VALUES (1, 2025010001, '2025-09-29', 5);`);
+  old.close();
+  const db = openDb(file);
+  const row = db.prepare('SELECT rating, mvp_player_id FROM logs').get();
+  assert.equal(row.rating, 5);
+  assert.equal(row.mvp_player_id, null);
+  openDb(file); // rodar de novo não quebra
+});

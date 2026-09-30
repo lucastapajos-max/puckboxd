@@ -58,5 +58,18 @@ export function openDb(file) {
     CREATE INDEX IF NOT EXISTS logs_user ON logs(user_id, watched_on DESC);
     CREATE INDEX IF NOT EXISTS logs_created ON logs(created_at DESC);
   `);
+
+  // Migrações de bancos criados antes de cada coluna existir.
+  const cols = new Set(db.prepare('PRAGMA table_info(logs)').all().map((c) => c.name));
+  if (!cols.has('mvp_player_id')) {
+    // Escolha do espectador: melhor jogador da partida na opinião de quem registrou.
+    db.exec(`
+      ALTER TABLE logs ADD COLUMN mvp_player_id INTEGER;
+      ALTER TABLE logs ADD COLUMN mvp_name TEXT;
+      ALTER TABLE logs ADD COLUMN mvp_team TEXT;
+      ALTER TABLE logs ADD COLUMN mvp_position TEXT;
+    `);
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS logs_mvp ON logs(mvp_player_id) WHERE mvp_player_id IS NOT NULL');
   return db;
 }

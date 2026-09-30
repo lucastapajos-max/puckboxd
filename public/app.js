@@ -18,6 +18,7 @@ const TEAMS = {
 const HOW = { live: 'Ao vivo', tv: 'Na TV / streaming', replay: 'Reprise', arena: 'No ginásio' };
 
 let me = null;
+let returnTo = '#/'; // última tela do app antes do login
 
 // ---------- utilidades ----------
 
@@ -95,10 +96,11 @@ function gameLine(r, { showScore = true } = {}) {
   return `<a href="#/jogo/${r.game_id}">${logo(r.away_abbrev, 'sm')} ${esc(r.away_abbrev)} @ ${esc(r.home_abbrev)} ${logo(r.home_abbrev, 'sm')}${score}</a> <span class="muted">· ${fmtDate(r.game_date)}</span>`;
 }
 
-function reviewItem(r, { withGame = false } = {}) {
+function reviewItem(r, { withGame = false, showMvp } = {}) {
   const mine = me && me.username === r.username;
   // No feed, o placar só aparece se o próprio leitor já viu o jogo; aqui não sabemos, então segue o modo sem spoiler.
   const scoreOk = !spoilerFree || revealed.has(r.game_id) || mine;
+  showMvp ??= scoreOk;
   return `
     <article class="review">
       <header>
@@ -106,6 +108,7 @@ function reviewItem(r, { withGame = false } = {}) {
         ${stars(r.rating)} ${r.liked ? '<span style="color:var(--like)">♥</span>' : ''}
         ${r.rewatch ? '<span class="badge">Revisto</span>' : ''}
         <span class="muted small">assistiu em ${fmtDate(r.watched_on)}</span>
+        ${showMvp ? mvpTag(r) : ''}
       </header>
       ${withGame ? `<div class="game-line">${gameLine(r, { showScore: scoreOk })}</div>` : ''}
       ${r.review ? `<p class="${r.spoilers && !mine ? 'spoiler' : ''}" ${r.spoilers && !mine ? 'title="Contém spoilers. Clique para ler."' : ''}>${esc(r.review)}</p>` : ''}
@@ -119,6 +122,14 @@ function histogram(h, total) {
     return `<span style="height:${(n / max) * 100}%" title="${(i + 1) / 2}★: ${n}"></span>`;
   }).join('');
   return `<div class="histo">${bars}</div><div class="histo-labels"><span>½★</span><span>${total} ${total === 1 ? 'nota' : 'notas'}</span><span>★★★★★</span></div>`;
+}
+
+const mvpTag = (r) => (r.mvp_name ? `<span class="mvp-tag" title="Escolha do espectador">MVP: ${logo(r.mvp_team, 'sm')} ${esc(r.mvp_name)}</span>` : '');
+
+// Ranking de jogadores (escolha do espectador). `count` devolve o texto da contagem.
+function playerRanking(rows, count) {
+  if (!rows.length) return '';
+  return `<ol class="ranking">${rows.map((p) => `<li>${logo(p.team, 'sm')} <span class="who">${esc(p.name)} <span class="muted small">${esc(p.team)}${p.position ? ' · ' + esc(p.position) : ''}</span></span><span class="muted small">${count(p)}</span></li>`).join('')}</ol>`;
 }
 
 function bindSpoilers(root = $view) {
@@ -211,12 +222,13 @@ async function viewGame(id) {
           <div class="review">
             <header>${stars(l.rating)} ${l.liked ? '<span style="color:var(--like)">♥</span>' : ''}
               <span class="muted small">${fmtDate(l.watched_on)}${l.how ? ' · ' + HOW[l.how] : ''}${l.rewatch ? ' · revisto' : ''}</span>
+              ${mvpTag(l)}
               <button class="danger small" data-del="${l.id}">Apagar</button></header>
             ${l.review ? `<p>${esc(l.review)}</p>` : ''}
           </div>`).join('')}` : ''}
 
         <h2>Reviews</h2>
-        ${c.reviews.length ? c.reviews.map((r) => reviewItem(r)).join('') : '<p class="muted">Ninguém escreveu sobre este jogo ainda.</p>'}
+        ${c.reviews.length ? c.reviews.map((r) => reviewItem(r, { showMvp: show })).join('') : '<p class="muted">Ninguém escreveu sobre este jogo ainda.</p>'}
 
         ${g.state !== 'future' ? `<h2>Gols</h2>${show ? goalsHtml() : '<p class="muted">Escondido no modo sem spoiler.</p>'}` : ''}
         ${show && g.stars.length ? `<h2>Jogadores em destaque</h2><div class="stars-list">${[...g.stars].sort((a, b) => a.star - b.star).map((s) => `<div><span class="badge">${s.star}º</span> ${logo(s.team, 'sm')} ${esc(s.name)} <span class="muted small">${esc(s.team)} · ${esc(s.position)}</span></div>`).join('')}</div><p class="muted small">Seleção oficial da NHL para o jogo.</p>` : ''}
@@ -226,6 +238,10 @@ async function viewGame(id) {
         ${c.rated ? `<div class="avg-big">${(c.avg / 2).toFixed(1)} <span class="stars" style="font-size:1.4rem">★</span></div>` : '<p class="muted">Sem notas ainda.</p>'}
         ${histogram(c.histogram, c.rated)}
         <p class="small muted">${c.watchers} ${c.watchers === 1 ? 'pessoa assistiu' : 'pessoas assistiram'} · ${c.likes ?? 0} ${c.likes === 1 ? 'curtida' : 'curtidas'}</p>
+        ${g.state !== 'future' ? `<h2>Escolha do espectador</h2>
+          ${!show ? '<p class="muted small">Escondido no modo sem spoiler.</p>'
+            : c.mvpVotes.length ? playerRanking(c.mvpVotes, (p) => `${p.votes} ${p.votes === 1 ? 'voto' : 'votos'}`)
+            : '<p class="muted small">Ninguém escolheu ainda. Registre o jogo e diga quem foi o melhor no gelo na sua opinião.</p>'}` : ''}
       </aside>
     </div>`;
 
@@ -256,6 +272,9 @@ function openLogDialog(g) {
       <label class="field"><span>Como</span>
         <select name="how"><option value="">—</option>${Object.entries(HOW).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
       </label>
+      <label class="field"><span>Escolha do espectador: quem foi o melhor do jogo para você?</span>
+        <select name="mvp" id="mvp-select" disabled><option value="">Carregando jogadores…</option></select>
+      </label>
       <label class="field"><span>Review (opcional)</span><textarea name="review" maxlength="5000" placeholder="O que achou do jogo?"></textarea></label>
       <div class="checks">
         <label><input type="checkbox" name="spoilers"> Contém spoilers</label>
@@ -267,6 +286,22 @@ function openLogDialog(g) {
         <button type="submit" class="primary">Salvar</button>
       </div>
     </form>`;
+
+  const $mvp = document.getElementById('mvp-select');
+  api('GET', `/api/games/${g.id}/players`)
+    .then(({ away, home }) => {
+      const line = (p) => {
+        const stat = p.position === 'G'
+          ? (p.shotsAgainst != null ? ` · ${p.saves}/${p.shotsAgainst} defesas` : '')
+          : p.goals || p.assists ? ` · ${p.goals}G ${p.assists}A` : '';
+        return `<option value="${p.id}">${p.number != null ? '#' + p.number + ' ' : ''}${esc(p.name)} (${esc(p.position)})${stat}</option>`;
+      };
+      const group = (t) => (t.players.length ? `<optgroup label="${esc(TEAMS[t.abbrev] ?? t.abbrev)}">${t.players.map(line).join('')}</optgroup>` : '');
+      const has = away.players.length + home.players.length > 0;
+      $mvp.innerHTML = `<option value="">${has ? 'Sem escolha' : 'Elenco indisponível para este jogo'}</option>${group(away)}${group(home)}`;
+      $mvp.disabled = !has;
+    })
+    .catch(() => { $mvp.innerHTML = '<option value="">Não foi possível carregar o elenco</option>'; });
 
   const $rating = document.getElementById('rating');
   const paint = () => {
@@ -309,6 +344,7 @@ function openLogDialog(g) {
         review: f.get('review'),
         spoilers: f.get('spoilers') === 'on',
         rewatch: f.get('rewatch') === 'on',
+        mvpPlayerId: f.get('mvp') ? Number(f.get('mvp')) : null,
       });
       $dialog.close();
       render();
@@ -382,6 +418,8 @@ async function viewUser(username) {
       <aside>
         <h2>Notas</h2>
         ${histogram(stats.histogram, Object.values(stats.histogram).reduce((a, b) => a + b, 0))}
+        <h2>${isMe ? 'Suas escolhas do espectador' : 'Escolhas do espectador'}</h2>
+        ${stats.mvps.length ? playerRanking(stats.mvps, (p) => `${p.games} ${p.games === 1 ? 'jogo' : 'jogos'}`) : `<p class="muted small">${isMe ? 'Quando registrar um jogo, escolha o melhor jogador. Seu ranking aparece aqui.' : '—'}</p>`}
         <h2>Times mais vistos</h2>
         ${stats.topTeams.length ? stats.topTeams.map((t) => `<div style="padding:.25rem 0"><a href="#/time/${esc(t.team)}">${logo(t.team, 'sm')} ${esc(TEAMS[t.team] ?? t.team)}</a> <span class="muted small">${t.n}</span></div>`).join('') : '<p class="muted">—</p>'}
       </aside>
@@ -398,7 +436,7 @@ async function viewUser(username) {
 
 async function viewCommunity() {
   $view.innerHTML = '<div class="loading">Carregando…</div>';
-  const { recent, popular, topRated } = await api('GET', '/api/feed');
+  const { recent, popular, topRated, topMvps } = await api('GET', '/api/feed');
   const list = (rows, extra) => rows.map((r) => `<div class="review">${gameLine(r, { showScore: !spoilerFree || revealed.has(r.game_id) })}<div class="small muted">${extra(r)}</div></div>`).join('');
   $view.innerHTML = `
     <div class="layout-2">
@@ -411,6 +449,8 @@ async function viewCommunity() {
         ${popular.length ? list(popular, (r) => `${r.logs} registros ${r.avg ? '· ' + stars(Math.round(r.avg)) : ''}`) : '<p class="muted">—</p>'}
         <h2>Mais bem avaliados</h2>
         ${topRated.length ? list(topRated, (r) => `${(r.avg / 2).toFixed(1)}★ em ${r.rated} notas`) : '<p class="muted small">Aparece quando um jogo tiver ao menos 2 notas.</p>'}
+        <h2>Escolhas do espectador</h2>
+        ${topMvps.length ? playerRanking(topMvps, (p) => `${p.votes} ${p.votes === 1 ? 'voto' : 'votos'}`) : '<p class="muted small">Ninguém escolheu um melhor jogador ainda.</p>'}
       </aside>
     </div>`;
   bindSpoilers();
@@ -434,7 +474,7 @@ function viewAuth() {
     try {
       ({ user: me } = await api('POST', `/api/${action}`, { username: f.get('username'), password: f.get('password') }));
       renderSession();
-      history.length > 1 ? history.back() : (location.hash = '#/');
+      location.hash = returnTo;
     } catch (err) {
       document.getElementById('auth-error').textContent = err.message;
     }
@@ -445,6 +485,7 @@ function viewAuth() {
 
 async function render() {
   const [, section, arg] = location.hash.split('/');
+  if (section !== 'entrar') returnTo = location.hash || '#/';
   try {
     if (section === 'jogo' && /^\d{10}$/.test(arg)) await viewGame(arg);
     else if (section === 'dia' && /^\d{4}-\d{2}-\d{2}$/.test(arg)) await viewSchedule(arg);
