@@ -256,14 +256,18 @@ function renderSession() {
   document.getElementById('nav-bell').hidden = !me;
   refreshBell();
   $session.innerHTML = me
-    ? `<a class="session-user" href="#/u/${esc(me.username)}">${avatar(me, 'xs')}${esc(me.username)}</a> <button class="ghost" id="logout">Sair</button>`
+    ? `<a class="session-user" href="#/u/${esc(me.username)}" title="Seu perfil">${avatar(me, 'xs')}<span class="session-name">${esc(me.username)}</span></a> <button class="ghost logout" id="logout">Sair</button>`
     : `<a href="#/entrar" class="btn primary">Entrar</a>`;
-  document.getElementById('logout')?.addEventListener('click', async () => {
-    await api('POST', '/api/logout');
-    me = null;
-    renderSession();
-    render();
-  });
+  document.getElementById('logout')?.addEventListener('click', logout);
+}
+
+// Também chamado pelo botão Sair do perfil (no celular o do topo fica escondido).
+async function logout() {
+  await api('POST', '/api/logout');
+  me = null;
+  renderSession();
+  location.hash = '#/';
+  render();
 }
 
 // ---------- telas ----------
@@ -272,9 +276,11 @@ async function viewSchedule(date) {
   $view.innerHTML = `
     <div class="date-nav">
       <h1>${date === todayISO() ? 'Hoje' : fmtDate(date, { weekday: 'long', day: '2-digit', month: 'long' })}</h1>
-      <a class="btn ghost" href="#/dia/${shiftDate(date, -1)}">← Dia anterior</a>
-      <input type="date" id="pick" value="${date}" aria-label="Escolher data">
-      <a class="btn ghost" href="#/dia/${shiftDate(date, 1)}">Próximo dia →</a>
+      <div class="date-controls">
+        <a class="btn ghost" href="#/dia/${shiftDate(date, -1)}" aria-label="Dia anterior">←<span class="lbl"> Dia anterior</span></a>
+        <input type="date" id="pick" value="${date}" aria-label="Escolher data">
+        <a class="btn ghost" href="#/dia/${shiftDate(date, 1)}" aria-label="Próximo dia"><span class="lbl">Próximo dia </span>→</a>
+      </div>
     </div>
     <div id="games" class="loading">Carregando jogos…</div>
     <h2>Times</h2>
@@ -532,6 +538,7 @@ async function viewUser(username) {
           ${user.follows_you ? '<span class="badge">Segue você</span>' : ''}
         </p>
         ${me && !isMe ? `<div style="margin-top:.5rem">${followButton(user.username, user.is_following)}</div>` : ''}
+        ${isMe ? '<button class="link small profile-logout" id="profile-logout">Sair da conta</button>' : ''}
       </div>
       <div class="stat-row">
         <div><b>${stats.games}</b><span>Jogos</span></div>
@@ -590,6 +597,7 @@ async function viewUser(username) {
     renderSession();
     render();
   });
+  document.getElementById('profile-logout')?.addEventListener('click', logout);
   bindFollow($view, (info) => {
     const n = document.getElementById('followers-n');
     n.textContent = info.followers;

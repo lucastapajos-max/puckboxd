@@ -59,6 +59,10 @@ h2 { font-size: 1.35rem; text-transform: uppercase; color: var(--muted); margin:
 .brand { font-size: 1.7rem; font-weight: 700; display: flex; align-items: center; gap: .5rem; }
 .puck { width: 24px; height: 12px; border-radius: 50%; background: var(--puck-top); box-shadow: 0 4px 0 var(--puck-side), inset 0 0 0 2px var(--puck-ring); margin-bottom: 4px; }
 .nav { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; font-weight: 500; }
+.nav-main { margin-left: auto; }
+.nav-actions { gap: .9rem; }
+/* [hidden] precisa ganhar de regras com display (ex.: o sino aparecia deslogado) */
+[hidden] { display: none !important; }
 .spoiler-toggle { display: flex; align-items: center; gap: .35rem; color: var(--muted); font-size: .85rem; cursor: pointer; white-space: nowrap; }
 .footer { color: var(--muted); font-size: .8rem; padding-top: 3rem; padding-bottom: 2rem; }
 
@@ -80,6 +84,8 @@ label.field > span { display: block; font-size: .8rem; color: var(--muted); marg
 .date-nav { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: 1.5rem 0 1rem; }
 .date-nav h1 { margin: 0 auto 0 0; }
 .date-nav input { width: auto; }
+.date-controls { display: flex; gap: .5rem; align-items: center; }
+button.profile-logout { display: none; margin-top: .4rem; padding: 0; }
 
 /* cards de jogo */
 .game-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
@@ -271,3 +277,50 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
 .user-chip .author { flex: 1; }
 .session-user { display: inline-flex; align-items: center; gap: .4rem; font-weight: 600; }
 #session { display: inline-flex; align-items: center; gap: .6rem; }
+
+/* ---------- celular ---------- */
+@media (max-width: 640px) {
+  body { font-size: 14px; }
+  h1 { font-size: 1.75rem; }
+  h2 { font-size: 1.1rem; margin-top: 1.5rem; }
+
+  /* topo: logo + ações numa linha, seções embaixo numa linha só */
+  .topbar-inner { display: grid; grid-template-columns: 1fr auto; gap: .35rem .75rem; padding-top: .5rem; padding-bottom: .5rem; min-height: 0; }
+  .brand { font-size: 1.45rem; }
+  .nav-actions { gap: .8rem; flex-wrap: nowrap; }
+  .nav-main { grid-column: 1 / -1; grid-row: 2; margin-left: 0; gap: .75rem; flex-wrap: nowrap; overflow-x: auto; font-size: .88rem; scrollbar-width: none; white-space: nowrap; }
+  .nav-main::-webkit-scrollbar { display: none; }
+  .spoiler-toggle { font-size: .78rem; margin-left: auto; gap: .25rem; }
+  .spoiler-toggle input { width: 14px; height: 14px; }
+  .session-name, .logout { display: none; }
+  button.profile-logout { display: block; margin-left: 0; text-align: left; }
+  .date-nav h1 { font-size: 1.45rem; }
+  .session-user .avatar.xs { width: 30px; height: 30px; }
+
+  /* datas: título em cima, ← data → embaixo */
+  .date-nav { display: block; margin: 1rem 0 .75rem; }
+  .date-nav h1 { margin-bottom: .5rem; }
+  .date-controls { width: 100%; }
+  .date-controls .btn { padding: .45rem .8rem; }
+  .date-controls .lbl { display: none; }
+  .date-controls input { flex: 1; min-width: 0; }
+
+  /* cards mais compactos */
+  .game-grid { gap: 8px; }
+  .game-card { padding: .6rem .8rem; }
+  .game-card .row .score { font-size: 1.3rem; }
+  .logo { width: 28px; height: 28px; }
+  .logo.lg { width: 72px; height: 72px; }
+
+  /* perfil: foto e nome lado a lado; números numa linha embaixo */
+  .profile-head { gap: .9rem; margin-top: 1rem; flex-wrap: wrap; align-items: flex-start; }
+  .profile-head > div:nth-child(2) { flex: 1; min-width: 0; }
+  .profile-head h1 { overflow-wrap: anywhere; }
+  .profile-head .avatar:not(.xs):not(.sm):not(.md) { width: 64px; height: 64px; font-size: 1.7rem; }
+  .avatar-wrap { gap: .15rem; }
+  .avatar-wrap .link { font-size: .72rem; }
+  #profile select { max-width: none !important; }
+  .stat-row { gap: 1.2rem; margin-left: 0; width: 100%; justify-content: space-between; }
+  .stat-row b { font-size: 1.5rem; }
+  .game-hero { padding: 1rem; gap: .5rem; }
+}

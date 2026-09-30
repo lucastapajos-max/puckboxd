@@ -15,20 +15,22 @@
   <header class="topbar">
     <div class="wrap topbar-inner">
       <a href="#/" class="brand"><span class="puck" aria-hidden="true"></span>Puckboxd</a>
-      <nav class="nav">
+      <nav class="nav nav-main" aria-label="Seções">
         <a href="#/">Jogos</a>
         <a href="#/feed" id="nav-feed" hidden>Seguindo</a>
         <a href="#/comunidade">Comunidade</a>
         <label class="spoiler-toggle" title="Esconde placares dos jogos que você ainda não registrou">
           <input type="checkbox" id="spoiler-free"> Sem spoiler
         </label>
+      </nav>
+      <div class="nav nav-actions">
         <a href="#/notificacoes" id="nav-bell" class="bell" hidden aria-label="Notificações" title="Notificações">
           <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3.5a1.5 1.5 0 0 0-3 0v.66A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
           <span id="bell-count" class="bell-count" hidden></span>
         </a>
         <button type="button" id="theme-toggle" class="theme-toggle" aria-label="Trocar tema"></button>
         <span id="session"></span>
-      </nav>
+      </div>
     </div>
   </header>
   <main id="view" class="wrap" aria-live="polite"></main>
