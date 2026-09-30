@@ -210,3 +210,9 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
 .n-body { flex: 1; min-width: 0; }
 .n-body .muted { display: block; margin-top: .2rem; }
 .n-snippet { margin: .3rem 0 0; color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
+
+button.link { background: none; padding: 0 .2rem; color: var(--muted); font-weight: 500; }
+button.link:hover { color: var(--ice); filter: none; }
+.comment-edit { margin-top: .4rem; }
+.comment-edit textarea { min-height: 70px; }
+.comment-edit .error { margin: .2rem 0 0; }

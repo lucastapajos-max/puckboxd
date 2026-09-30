@@ -54,7 +54,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     unlike: db.prepare('DELETE FROM review_likes WHERE user_id = ? AND log_id = ?'),
     likeCount: db.prepare('SELECT COUNT(*) AS n FROM review_likes WHERE log_id = ?'),
     comments: db.prepare(
-      `SELECT c.id, c.body, c.created_at, c.user_id, u.username FROM comments c JOIN users u ON u.id = c.user_id
+      `SELECT c.id, c.body, c.created_at, c.edited_at, c.user_id, u.username FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.log_id = ? ORDER BY c.id LIMIT 500`,
     ),
     addComment: db.prepare('INSERT INTO comments (log_id, user_id, body) VALUES (?, ?, ?)'),
@@ -62,6 +62,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
       'SELECT c.*, l.user_id AS log_owner FROM comments c JOIN logs l ON l.id = c.log_id WHERE c.id = ?',
     ),
     deleteComment: db.prepare('DELETE FROM comments WHERE id = ?'),
+    editComment: db.prepare("UPDATE comments SET body = ?, edited_at = datetime('now') WHERE id = ?"),
 
     // notificações
     notify: db.prepare('INSERT INTO notifications (user_id, actor_id, type, log_id, comment_id) VALUES (?, ?, ?, ?, ?)'),
@@ -264,6 +265,18 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
       q.notify.run(user_id, me.id, 'reply', Number(id), commentId);
     }
     return { comments: q.comments.all(Number(id)) };
+  });
+
+  // Só quem escreveu edita (o dono da review pode apagar, mas não reescrever o texto dos outros).
+  route('PUT', /^\/api\/comments\/(\d+)$/, async (req, _res, [id]) => {
+    const me = requireUser(req);
+    const c = q.commentById.get(Number(id));
+    if (!c) throw new HttpError(404, 'Comentário não encontrado');
+    if (c.user_id !== me.id) throw new HttpError(403, 'Só quem escreveu pode editar o comentário');
+    const body = cleanText((await readJson(req)).body, 1000);
+    if (!body) throw new HttpError(400, 'Comentário vazio');
+    if (body !== c.body) q.editComment.run(body, c.id);
+    return { comments: q.comments.all(c.log_id) };
   });
 
   route('DELETE', /^\/api\/comments\/(\d+)$/, (req, _res, [id]) => {

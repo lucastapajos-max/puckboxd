@@ -135,5 +135,7 @@ export function openDb(file) {
     );
     CREATE INDEX IF NOT EXISTS notifications_user ON notifications(user_id, id DESC);
   `);
+  const commentCols = new Set(db.prepare('PRAGMA table_info(comments)').all().map((c) => c.name));
+  if (!commentCols.has('edited_at')) db.exec('ALTER TABLE comments ADD COLUMN edited_at TEXT');
   return db;
 }

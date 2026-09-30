@@ -232,3 +232,27 @@ test('notificações: seguir, curtir, comentar, responder, ler e desfazer', asyn
   assert.equal(await count(dono), 0);
   assert.equal((await dono('GET', '/api/notifications')).body.items.length, 2, 'lidas continuam na lista');
 });
+
+test('editar o próprio comentário', async () => {
+  const autora = await user('autora_e');
+  const comentarista = await user('coment_e');
+  const [g] = await gamesOn('2025-11-09');
+  const logId = (await autora('POST', '/api/logs', { gameId: g.id, review: 'ok' })).body.log.id;
+  const { comments } = (await comentarista('POST', `/api/logs/${logId}/comments`, { body: 'jgo bom' })).body;
+  const id = comments[0].id;
+  assert.equal(comments[0].edited_at, null);
+
+  assert.equal((await autora('PUT', `/api/comments/${id}`, { body: 'hackeado' })).status, 403, 'dono da review não reescreve');
+  assert.equal((await client()('PUT', `/api/comments/${id}`, { body: 'x' })).status, 401);
+  assert.equal((await comentarista('PUT', `/api/comments/${id}`, { body: '  ' })).status, 400);
+  assert.equal((await comentarista('PUT', '/api/comments/999999', { body: 'x' })).status, 404);
+
+  const edited = await comentarista('PUT', `/api/comments/${id}`, { body: 'jogo bom, e o goleiro fechou tudo' });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.body.comments[0].body, 'jogo bom, e o goleiro fechou tudo');
+  assert.ok(edited.body.comments[0].edited_at);
+
+  // o aviso da autora mostra o texto novo
+  const n = (await autora('GET', '/api/notifications')).body.items.find((x) => x.type === 'comment');
+  assert.equal(n.comment, 'jogo bom, e o goleiro fechou tudo');
+});

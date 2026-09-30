@@ -600,9 +600,10 @@ async function viewReview(id) {
   const scoreOk = !spoilerFree || revealed.has(r.game_id) || mine;
   const commentHtml = (list) => list.length
     ? list.map((c) => `<div class="comment">
-        <header><a href="#/u/${esc(c.username)}">${esc(c.username)}</a> <span class="muted small">${fmtDate(c.created_at.slice(0, 10))}</span>
+        <header><a href="#/u/${esc(c.username)}">${esc(c.username)}</a> <span class="muted small">${fmtDate(c.created_at.slice(0, 10))}${c.edited_at ? ' · editado' : ''}</span>
+          ${me && me.username === c.username ? `<button class="link small" data-edit-comment="${c.id}">Editar</button>` : ''}
           ${me && (me.username === c.username || mine) ? `<button class="danger small" data-del-comment="${c.id}">Apagar</button>` : ''}</header>
-        <p>${esc(c.body)}</p></div>`).join('')
+        <p data-comment-body="${c.id}">${esc(c.body)}</p></div>`).join('')
     : '<p class="muted">Nenhum comentário ainda.</p>';
 
   $view.innerHTML = `
@@ -620,17 +621,47 @@ async function viewReview(id) {
   bindSpoilers();
 
   const $comments = document.getElementById('comments');
+  let current = comments; // comentários na tela, para a edição saber o texto original
   const showComments = (list) => {
+    current = list;
     $comments.innerHTML = commentHtml(list);
     const link = $view.querySelector('.review-actions a');
     if (link) link.textContent = list.length ? `${list.length} ${list.length === 1 ? 'comentário' : 'comentários'}` : 'Comentar';
     bindDeletes();
   };
-  const bindDeletes = () => $comments.querySelectorAll('[data-del-comment]').forEach((b) => b.addEventListener('click', async () => {
-    if (!confirm('Apagar este comentário?')) return;
-    const res = await api('DELETE', `/api/comments/${b.dataset.delComment}`);
-    showComments(res.comments);
-  }));
+  const bindDeletes = () => {
+    $comments.querySelectorAll('[data-del-comment]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Apagar este comentário?')) return;
+      const res = await api('DELETE', `/api/comments/${b.dataset.delComment}`);
+      showComments(res.comments);
+    }));
+    // Edição no lugar: troca o texto por uma caixa com Salvar/Cancelar.
+    $comments.querySelectorAll('[data-edit-comment]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.editComment;
+      const c = current.find((x) => String(x.id) === id);
+      const $p = $comments.querySelector(`[data-comment-body="${id}"]`);
+      b.hidden = true;
+      $p.outerHTML = `<form class="comment-edit" data-edit-form="${id}">
+          <textarea maxlength="1000" required>${esc(c.body)}</textarea>
+          <p class="error"></p>
+          <div class="actions" style="margin:.4rem 0 0"><button class="primary small">Salvar</button><button type="button" class="ghost small" data-cancel>Cancelar</button></div>
+        </form>`;
+      const $form = $comments.querySelector(`[data-edit-form="${id}"]`);
+      const $ta = $form.querySelector('textarea');
+      $ta.focus();
+      $ta.setSelectionRange($ta.value.length, $ta.value.length);
+      $form.querySelector('[data-cancel]').addEventListener('click', () => showComments(current));
+      $form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        try {
+          const res = await api('PUT', `/api/comments/${id}`, { body: $ta.value });
+          showComments(res.comments);
+        } catch (err) {
+          $form.querySelector('.error').textContent = err.message;
+        }
+      });
+    }));
+  };
   bindDeletes();
   document.getElementById('comment-form')?.addEventListener('submit', async (e) => {
     e.preventDefault();
