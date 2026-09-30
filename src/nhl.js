@@ -190,6 +190,17 @@ export function createNhl({ mock = false } = {}) {
         const raw = await get(`/club-schedule-season/${abbrev}/now`);
         return { abbrev, name: TEAMS[abbrev], games: (raw.games ?? []).map((g) => normalizeGame(g)) };
       }),
+    // Temporada específica (ex.: 20252026). Temporada passada não muda, então o cache é longo.
+    teamSeasonFor: (abbrev, season) =>
+      cached(`team:${abbrev}:${season}`, () => 12 * 3600e3, async () => {
+        try {
+          const raw = await get(`/club-schedule-season/${abbrev}/${season}`);
+          return { abbrev, season, games: (raw.games ?? []).map((g) => normalizeGame(g)) };
+        } catch (err) {
+          if (err instanceof NhlError && err.status === 404) return { abbrev, season, games: [] };
+          throw err;
+        }
+      }),
   };
 }
 
@@ -313,6 +324,10 @@ function createMock() {
         if (g.awayTeam.abbrev === abbrev || g.homeTeam.abbrev === abbrev) games.push(normalizeGame(g));
       }
       return { abbrev, name: TEAMS[abbrev], games };
+    },
+    async teamSeasonFor(abbrev, season) {
+      // O mock só tem a temporada 2025-26.
+      return { abbrev, season, games: season === 20252026 ? (await this.teamSeason(abbrev)).games : [] };
     },
   };
 }

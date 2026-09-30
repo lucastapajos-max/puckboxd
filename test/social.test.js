@@ -326,3 +326,45 @@ test('foto de perfil: enviar, validar, servir e remover', async () => {
   assert.equal(removed.body.user.avatar_at, null);
   assert.equal((await fetch(`${base}/api/users/foto_u/avatar`)).status, 404);
 });
+
+test('busca: confronto, time, pessoas e listas', async () => {
+  const eu = await user('busca_eu');
+  await user('busca_amiga');
+  const s = async (text, c = client()) => (await c('GET', `/api/search?q=${encodeURIComponent(text)}`)).body;
+
+  // confronto por sigla, nome ou apelido dá o mesmo resultado
+  const bySigla = await s('WSH x PIT');
+  assert.deepEqual(bySigla.matchup.teams, ['WSH', 'PIT']);
+  assert.ok(bySigla.matchup.played.length > 0);
+  for (const g of bySigla.matchup.played) {
+    assert.deepEqual([g.away.abbrev, g.home.abbrev].sort(), ['PIT', 'WSH']);
+    assert.equal(g.loggedByMe, false);
+  }
+  const dates = bySigla.matchup.played.map((g) => g.date);
+  assert.deepEqual(dates, [...dates].sort().reverse(), 'mais recentes primeiro');
+  assert.deepEqual((await s('caps vs pens')).matchup.played.map((g) => g.id), bySigla.matchup.played.map((g) => g.id));
+  assert.deepEqual((await s('Capitals Penguins')).matchup.teams, ['WSH', 'PIT']);
+
+  // marcações de quem busca vêm junto
+  const g = bySigla.matchup.played[0];
+  await eu('POST', `/api/watchlist/${g.id}`);
+  assert.equal((await s('WSH x PIT', eu)).matchup.played.find((x) => x.id === g.id).inWatchlist, true);
+
+  // um time só: sem confronto
+  const habs = await s('habs');
+  assert.deepEqual(habs.teams.map((t) => t.abbrev), ['MTL']);
+  assert.equal(habs.matchup, null);
+  assert.deepEqual((await s('new york')).teams.map((t) => t.abbrev), ['NYI', 'NYR']);
+  assert.equal((await s('new york')).matchup, null);
+
+  // pessoas (com _ tratado como letra, não como curinga) e listas
+  assert.deepEqual((await s('busca')).users.map((u) => u.username), ['busca_eu', 'busca_amiga'], 'nome mais curto primeiro');
+  assert.deepEqual((await s('@busca_eu')).users.map((u) => u.username), ['busca_eu']);
+  assert.equal((await s('buscaXeu')).users.length, 0);
+  await eu('POST', '/api/lists', { title: 'Clássicos do Metropolitan' });
+  assert.equal((await s('metropolitan')).lists[0].title, 'Clássicos do Metropolitan');
+  assert.equal((await s('%')).lists.length, 0, '% não vira curinga');
+
+  const tiny = await s('a');
+  assert.deepEqual([tiny.users, tiny.teams, tiny.lists, tiny.matchup], [[], [], [], null]);
+});

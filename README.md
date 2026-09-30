@@ -17,6 +17,7 @@ Nome provisório. Troque à vontade.
 - **Foto de perfil**: upload de JPG, PNG ou WebP, recortada e reduzida no navegador para 256×256 antes de enviar. Aparece no topo, no perfil, nas reviews e nos comentários, junto com o logo do time do coração.
 - **Tema claro e escuro**: botão no topo; sem escolha, segue o sistema. Os logos da NHL trocam para a versão certa de cada fundo.
 - **Watchlist ("Quero ver")**: marque qualquer jogo, inclusive os que ainda vão acontecer. A página separa "Já dá para assistir" de "Ainda vão acontecer" e nunca mostra placar. Jogo da watchlist fica com o placar escondido também na agenda e na página do jogo. Registrar o jogo tira ele da lista. É pública, no perfil.
+- **Busca** (lupa no topo): confrontos ("WSH x PIT", "caps vs pens", "Capitals Penguins") com os jogos das duas últimas temporadas e o retrospecto, times por sigla, cidade, nome ou apelido ("habs", "leafs", "bolts"), pessoas e listas. O retrospecto só conta jogos com placar visível para quem busca.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -54,6 +55,8 @@ src/server.js   sobe o servidor
 src/app.js      rotas HTTP, autenticação, diário, feed
 src/social.js   listas, seguidores, curtidas, comentários e notificações
 src/watchlist.js jogos marcados para ver depois
+src/search.js   busca (pessoas, times, confrontos, listas)
+src/teams.js    times e apelidos reconhecidos na busca
 src/http.js     erros HTTP e leitura de JSON
 src/nhl.js      cliente da API da NHL: cache em memória, normalização, mock
 src/db.js       schema SQLite (node:sqlite, embutido no Node)
@@ -71,6 +74,7 @@ Endpoints da NHL usados:
 | Página do jogo | `/v1/gamecenter/{id}/landing` |
 | Elenco da partida (escolha do espectador) | `/v1/gamecenter/{id}/boxscore` |
 | Calendário do time | `/v1/club-schedule-season/{time}/now` |
+| Confrontos da temporada anterior (busca) | `/v1/club-schedule-season/{time}/{temporada}` |
 
 Referência não oficial: https://github.com/Zmalski/NHL-API-Reference
 
@@ -79,4 +83,3 @@ Quando alguém registra um jogo, o servidor busca o jogo na NHL e grava um retra
 ## Próximos passos que fazem sentido
 
 - Curtir listas
-- Busca de jogos por confronto

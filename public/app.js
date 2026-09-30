@@ -116,7 +116,8 @@ function reveal(id) {
 
 const BOOKMARK = '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1Z"/></svg>';
 
-function gameCard(g) {
+// `withDate`: mostra o dia nos jogos futuros (na agenda o dia já está no título).
+function gameCard(g, { withDate = false } = {}) {
   const show = g.state !== 'future' && canSee(g);
   const awayWin = g.state === 'final' && g.away.score > g.home.score;
   const homeWin = g.state === 'final' && g.home.score > g.away.score;
@@ -124,7 +125,7 @@ function gameCard(g) {
   const status =
     g.state === 'live' ? '<span class="badge live">Ao vivo</span>'
     : g.state === 'final' ? `<span class="badge">Final${show ? suffix(g.lastPeriod) : ''}</span>`
-    : `<span>${g.startTimeUTC ? fmtTime(g.startTimeUTC) : 'A definir'}</span>`;
+    : `<span>${withDate && g.startTimeUTC ? new Date(g.startTimeUTC).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' }) + ' · ' : ''}${g.startTimeUTC ? fmtTime(g.startTimeUTC) : 'A definir'}</span>`;
   const community = g.community?.logs
     ? `<span>${g.community.avg ? stars(Math.round(g.community.avg)) : ''} ${g.community.logs} ${g.community.logs === 1 ? 'registro' : 'registros'}</span>`
     : '';
@@ -504,7 +505,7 @@ async function viewTeam(abbrev) {
   $view.innerHTML = `
     <div class="profile-head">${logo(abbrev, 'lg')}<div><h1>${esc(name)}</h1>
       <p class="muted">${played.length} jogos disputados · ${played.filter((g) => g.loggedByMe).length} assistidos por você</p></div></div>
-    ${next.length ? `<h2>Próximos jogos</h2><div class="game-grid">${next.map(gameCard).join('')}</div>` : ''}
+    ${next.length ? `<h2>Próximos jogos</h2><div class="game-grid">${next.map((g) => gameCard(g, { withDate: true })).join('')}</div>` : ''}
     <h2>Já disputados</h2>
     ${played.length ? `<div class="game-grid">${played.map(gameCard).join('')}</div>` : '<p class="muted">Nenhum jogo nesta temporada ainda.</p>'}`;
 }
@@ -819,6 +820,78 @@ async function viewNetwork(username) {
       ${col('Seguidores', followers, 'Ninguém ainda.')}
       ${col('Seguindo', following, 'Não segue ninguém ainda.')}
     </div>`;
+}
+
+// ---------- busca ----------
+
+// Retrospecto entre dois times, contando só jogos encerrados cujo placar a pessoa pode ver.
+function headToHead([a, b], games) {
+  const finals = games.filter((g) => g.state === 'final');
+  const visible = finals.filter(canSee);
+  const wins = { [a]: 0, [b]: 0 };
+  for (const g of visible) wins[g.away.score > g.home.score ? g.away.abbrev : g.home.abbrev] += 1;
+  const hidden = finals.length - visible.length;
+  if (!visible.length) return hidden ? `<p class="muted small">Retrospecto escondido (${hidden} ${hidden === 1 ? 'jogo' : 'jogos'} com placar escondido).</p>` : '';
+  return `<div class="h2h">
+      <span>${logo(a, 'sm')} <b>${esc(a)}</b> <span class="h2h-n">${wins[a]}</span></span>
+      <span class="muted">×</span>
+      <span><span class="h2h-n">${wins[b]}</span> <b>${esc(b)}</b> ${logo(b, 'sm')}</span>
+    </div>
+    <p class="muted small">Vitórias em ${visible.length} ${visible.length === 1 ? 'jogo' : 'jogos'} nas duas últimas temporadas${hidden ? ` · ${hidden} com placar escondido não ${hidden === 1 ? 'entrou' : 'entraram'} na conta` : ''}.</p>`;
+}
+
+async function viewSearch(initial = '') {
+  $view.innerHTML = `
+    <div class="search-page">
+      <form id="search-form" role="search">
+        <input id="search-input" type="search" autocomplete="off" maxlength="80" value="${esc(initial)}"
+          placeholder="Pessoas, times ou confrontos (ex.: WSH x PIT, habs, caps vs pens)" aria-label="Buscar">
+      </form>
+      <div id="search-results">${initial ? '<div class="loading">Buscando…</div>' : ''}</div>
+    </div>`;
+  const $input = document.getElementById('search-input');
+  document.getElementById('search-form').addEventListener('submit', (e) => { e.preventDefault(); clearTimeout(timer); run($input.value); });
+  const $results = document.getElementById('search-results');
+  let timer;
+  $input.focus();
+  $input.setSelectionRange($input.value.length, $input.value.length);
+
+  let seq = 0;
+  async function run(text) {
+    const mine = ++seq;
+    // Atualiza o endereço sem recarregar a tela (replaceState não dispara hashchange).
+    history.replaceState(null, '', text.trim() ? `#/busca/${encodeURIComponent(text.trim())}` : '#/busca');
+    if (text.trim().length < 2) {
+      $results.innerHTML = '<p class="muted small search-tips">Dicas: <b>WSH x PIT</b> para ver os confrontos, <b>habs</b> ou <b>Toronto</b> para ir ao time, ou o nome de alguém para achar a pessoa.</p>';
+      return;
+    }
+    const r = await api('GET', `/api/search?q=${encodeURIComponent(text)}`).catch((e) => ({ error: e.message }));
+    if (mine !== seq) return; // chegou uma resposta velha depois de uma nova
+    if (r.error) { $results.innerHTML = `<p class="error">${esc(r.error)}</p>`; return; }
+
+    const parts = [];
+    if (r.matchup) {
+      const { teams: [a, b], played, upcoming, error } = r.matchup;
+      parts.push(`<section><h2>${esc(TEAMS[a])} × ${esc(TEAMS[b])}</h2>
+        ${error ? `<p class="error">${esc(error)}</p>` : ''}
+        ${headToHead([a, b], played)}
+        ${upcoming.length ? `<h3 class="sub">Próximos</h3><div class="game-grid">${upcoming.map((g) => gameCard(g, { withDate: true })).join('')}</div>` : ''}
+        ${played.length ? `<h3 class="sub">Já disputados</h3><div class="game-grid">${played.map((g) => gameCard(g)).join('')}</div>`
+          : !error ? '<p class="muted">Nenhum jogo entre os dois nas duas últimas temporadas.</p>' : ''}
+      </section>`);
+    }
+    if (r.teams.length && !r.matchup) {
+      parts.push(`<section><h2>Times</h2><div class="team-results">${r.teams.map((t) =>
+        `<a class="team-result" href="#/time/${esc(t.abbrev)}">${logo(t.abbrev)}<span>${esc(t.name)}</span></a>`).join('')}</div></section>`);
+    }
+    if (r.users.length) parts.push(`<section><h2>Pessoas</h2>${r.users.map((u) => userChip(u, { withFollow: true })).join('')}</section>`);
+    if (r.lists.length) parts.push(`<section><h2>Listas</h2><div class="list-grid">${r.lists.map((l) => listCard({ ...l, preview: [] })).join('')}</div></section>`);
+    $results.innerHTML = parts.length ? parts.join('') : `<p class="empty">Nada encontrado para “${esc(text.trim())}”.</p>`;
+    bindFollow($results);
+  }
+
+  $input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => run($input.value), 250); });
+  run(initial);
 }
 
 // ---------- watchlist ----------
@@ -1164,6 +1237,7 @@ async function render() {
     else if (section === 'u' && arg && sub === 'watchlist') await viewWatchlist(decodeURIComponent(arg));
     else if (section === 'u' && arg) await viewUser(decodeURIComponent(arg));
     else if (section === 'feed') await viewFeed();
+    else if (section === 'busca') await viewSearch(arg ? decodeURIComponent(arg) : '');
     else if (section === 'notificacoes') await viewNotifications();
     else if (section === 'review' && /^\d+$/.test(arg)) await viewReview(arg);
     else if (section === 'lista' && /^\d+$/.test(arg)) await viewList(arg);

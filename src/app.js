@@ -9,6 +9,7 @@ import { isTeam } from './teams.js';
 import { HttpError, readJson } from './http.js';
 import { createSocial } from './social.js';
 import { createWatchlist } from './watchlist.js';
+import { createSearch } from './search.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -232,6 +233,14 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
   const social = createSocial({ db, nhl, route, currentUser, requireUser, snapshotGame, userByName: q.userByName });
   const watchlist = createWatchlist({ db, nhl, route, currentUser, requireUser, snapshotGame, userByName: q.userByName });
 
+  // Média da comunidade e marcações de quem está vendo (assistido, watchlist) numa lista de jogos.
+  function decorateGames(games, user) {
+    const logged = user ? new Set(q.loggedGameIds.all(user.id).map((r) => r.game_id)) : new Set();
+    const watching = watchlist.idsOf(user?.id);
+    return withCommunity(games).map((g) => ({ ...g, loggedByMe: logged.has(g.id), inWatchlist: watching.has(g.id) }));
+  }
+  createSearch({ db, nhl, route, currentUser, decorateGames });
+
   route('GET', /^\/api\/me$/, (req) => ({ user: currentUser(req) }));
 
   route('POST', /^\/api\/signup$/, async (req, res) => {
@@ -326,18 +335,14 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     if (!DATE_RE.test(date) || Number.isNaN(Date.parse(date))) throw new HttpError(400, 'Data inválida');
     const data = await nhl.schedule(date);
     const user = currentUser(req);
-    const logged = user ? new Set(q.loggedGameIds.all(user.id).map((r) => r.game_id)) : new Set();
-    const watching = watchlist.idsOf(user?.id);
-    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id), inWatchlist: watching.has(g.id) })) };
+    return { ...data, games: decorateGames(data.games, user) };
   });
 
   route('GET', /^\/api\/teams\/([A-Z]{3})$/, async (req, _res, [abbrev]) => {
     if (!isTeam(abbrev)) throw new HttpError(404, 'Time não encontrado');
     const data = await nhl.teamSeason(abbrev);
     const user = currentUser(req);
-    const logged = user ? new Set(q.loggedGameIds.all(user.id).map((r) => r.game_id)) : new Set();
-    const watching = watchlist.idsOf(user?.id);
-    return { ...data, games: withCommunity(data.games).map((g) => ({ ...g, loggedByMe: logged.has(g.id), inWatchlist: watching.has(g.id) })) };
+    return { ...data, games: decorateGames(data.games, user) };
   });
 
   route('GET', /^\/api\/games\/(\d{10})$/, async (req, _res, [id]) => {
