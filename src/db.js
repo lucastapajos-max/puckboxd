@@ -137,5 +137,8 @@ export function openDb(file) {
   `);
   const commentCols = new Set(db.prepare('PRAGMA table_info(comments)').all().map((c) => c.name));
   if (!commentCols.has('edited_at')) db.exec('ALTER TABLE comments ADD COLUMN edited_at TEXT');
+  if (!new Set(db.prepare('PRAGMA table_info(logs)').all().map((c) => c.name)).has('edited_at')) {
+    db.exec('ALTER TABLE logs ADD COLUMN edited_at TEXT');
+  }
   return db;
 }

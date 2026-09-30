@@ -256,3 +256,37 @@ test('editar o próprio comentário', async () => {
   const n = (await autora('GET', '/api/notifications')).body.items.find((x) => x.type === 'comment');
   assert.equal(n.comment, 'jogo bom, e o goleiro fechou tudo');
 });
+
+test('editar o próprio registro mantém curtidas e comentários', async () => {
+  const dona = await user('dona_r');
+  const fa = await user('fa_r');
+  const [g] = await gamesOn('2025-11-10');
+  const log = (await dona('POST', '/api/logs', { gameId: g.id, rating: 5, review: 'jgo ok', watchedOn: '2025-11-10' })).body.log;
+  await fa('POST', `/api/logs/${log.id}/like`);
+  await fa('POST', `/api/logs/${log.id}/comments`, { body: 'discordo' });
+  const { away } = (await dona('GET', `/api/games/${g.id}/players`)).body;
+
+  assert.equal((await fa('PUT', `/api/logs/${log.id}`, { rating: 1 })).status, 404, 'só a dona edita');
+  assert.equal((await dona('PUT', `/api/logs/${log.id}`, { rating: 11 })).status, 400);
+  assert.equal((await dona('PUT', `/api/logs/${log.id}`, { watchedOn: '2020-01-01' })).status, 400);
+
+  const res = await dona('PUT', `/api/logs/${log.id}`, {
+    rating: 9, review: 'Jogo ótimo, revi e mudei de ideia', liked: true, how: 'replay', watchedOn: '2025-11-11', mvpPlayerId: away.players[0].id,
+  });
+  assert.equal(res.status, 200, JSON.stringify(res.body));
+  assert.equal(res.body.log.rating, 9);
+  assert.equal(res.body.log.game_id, g.id);
+  assert.equal(res.body.log.mvp_player_id, away.players[0].id);
+  assert.ok(res.body.log.edited_at);
+
+  const page = (await fa('GET', `/api/logs/${log.id}`)).body;
+  assert.equal(page.log.review, 'Jogo ótimo, revi e mudei de ideia');
+  assert.equal(page.log.like_count, 1);
+  assert.equal(page.log.comment_count, 1);
+  assert.ok(page.log.edited_at);
+
+  // tirar a escolha do espectador também funciona
+  const cleared = await dona('PUT', `/api/logs/${log.id}`, { rating: 9, mvpPlayerId: null });
+  assert.equal(cleared.body.log.mvp_player_id, null);
+  assert.equal(cleared.body.log.review, null, 'campos não enviados voltam ao padrão, igual ao formulário');
+});

@@ -107,7 +107,7 @@ function reviewItem(r, { withGame = false, showMvp } = {}) {
         <a href="#/u/${esc(r.username)}">${esc(r.username)}</a>
         ${stars(r.rating)} ${r.liked ? '<span style="color:var(--like)">♥</span>' : ''}
         ${r.rewatch ? '<span class="badge">Revisto</span>' : ''}
-        <span class="muted small">assistiu em ${fmtDate(r.watched_on)}</span>
+        <span class="muted small">assistiu em ${fmtDate(r.watched_on)}${r.edited_at ? ' · editado' : ''}</span>
         ${showMvp ? mvpTag(r) : ''}
       </header>
       ${withGame ? `<div class="game-line">${gameLine(r, { showScore: scoreOk })}</div>` : ''}
@@ -284,6 +284,7 @@ async function viewGame(id) {
             <header>${stars(l.rating)} ${l.liked ? '<span style="color:var(--like)">♥</span>' : ''}
               <span class="muted small">${fmtDate(l.watched_on)}${l.how ? ' · ' + HOW[l.how] : ''}${l.rewatch ? ' · revisto' : ''}</span>
               ${mvpTag(l)}
+              <button class="link small" data-edit-log="${l.id}">Editar</button>
               <button class="danger small" data-del="${l.id}">Apagar</button></header>
             ${l.review ? `<p>${esc(l.review)}</p>` : ''}
           </div>`).join('')}` : ''}
@@ -311,6 +312,8 @@ async function viewGame(id) {
   document.getElementById('reveal')?.addEventListener('click', () => { reveal(g.id); render(); });
   document.getElementById('log')?.addEventListener('click', () => openLogDialog(g));
   document.getElementById('add-to-list')?.addEventListener('click', () => openListDialog(g));
+  $view.querySelectorAll('[data-edit-log]').forEach((b) => b.addEventListener('click', () =>
+    openLogDialog(g, myLogs.find((l) => String(l.id) === b.dataset.editLog))));
   $view.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => {
     if (!confirm('Apagar este registro?')) return;
     await api('DELETE', `/api/logs/${b.dataset.del}`);
@@ -318,30 +321,31 @@ async function viewGame(id) {
   }));
 }
 
-function openLogDialog(g) {
-  let rating = null;
-  let liked = false;
+// `edit`: registro existente para editar; sem ele, cria um registro novo.
+function openLogDialog(g, edit = null) {
+  let rating = edit?.rating ?? null;
+  let liked = Boolean(edit?.liked);
   $dialog.innerHTML = `
     <form method="dialog" id="log-form">
-      <h3 style="margin-top:0">${esc(g.away.abbrev)} @ ${esc(g.home.abbrev)} <span class="muted small">${fmtDate(g.date)}</span></h3>
+      <h3 style="margin-top:0">${edit ? 'Editar registro · ' : ''}${esc(g.away.abbrev)} @ ${esc(g.home.abbrev)} <span class="muted small">${fmtDate(g.date)}</span></h3>
       <div class="dialog-row">
         <div class="rating-input" id="rating" role="slider" aria-label="Nota" aria-valuemin="0" aria-valuemax="5" tabindex="0">
           ${[1, 2, 3, 4, 5].map((i) => `<span class="s" data-i="${i}"><span class="half" hidden></span><span class="full" hidden></span></span>`).join('')}
         </div>
-        <button type="button" class="like-toggle" id="like" aria-pressed="false" aria-label="Curtir">♥</button>
+        <button type="button" class="like-toggle" id="like" aria-pressed="${liked}" aria-label="Curtir">♥</button>
         <button type="button" class="ghost small" id="clear-rating">Limpar nota</button>
       </div>
-      <label class="field"><span>Assistiu em</span><input type="date" name="watchedOn" value="${todayISO() < g.date ? g.date : todayISO()}" min="${g.date}" required></label>
+      <label class="field"><span>Assistiu em</span><input type="date" name="watchedOn" value="${edit?.watched_on ?? (todayISO() < g.date ? g.date : todayISO())}" min="${g.date}" required></label>
       <label class="field"><span>Como</span>
-        <select name="how"><option value="">—</option>${Object.entries(HOW).map(([k, v]) => `<option value="${k}">${v}</option>`).join('')}</select>
+        <select name="how"><option value="">—</option>${Object.entries(HOW).map(([k, v]) => `<option value="${k}" ${edit?.how === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
       </label>
       <label class="field"><span>Escolha do espectador: quem foi o melhor do jogo para você?</span>
         <select name="mvp" id="mvp-select" disabled><option value="">Carregando jogadores…</option></select>
       </label>
-      <label class="field"><span>Review (opcional)</span><textarea name="review" maxlength="5000" placeholder="O que achou do jogo?"></textarea></label>
+      <label class="field"><span>Review (opcional)</span><textarea name="review" maxlength="5000" placeholder="O que achou do jogo?">${esc(edit?.review ?? '')}</textarea></label>
       <div class="checks">
-        <label><input type="checkbox" name="spoilers"> Contém spoilers</label>
-        <label><input type="checkbox" name="rewatch" ${g.loggedByMe ? 'checked' : ''}> Já tinha visto</label>
+        <label><input type="checkbox" name="spoilers" ${edit?.spoilers ? 'checked' : ''}> Contém spoilers</label>
+        <label><input type="checkbox" name="rewatch" ${(edit ? edit.rewatch : g.loggedByMe) ? 'checked' : ''}> Já tinha visto</label>
       </div>
       <p class="error" id="log-error"></p>
       <div class="actions" style="justify-content:flex-end;margin:0">
@@ -363,6 +367,7 @@ function openLogDialog(g) {
       const has = away.players.length + home.players.length > 0;
       $mvp.innerHTML = `<option value="">${has ? 'Sem escolha' : 'Elenco indisponível para este jogo'}</option>${group(away)}${group(home)}`;
       $mvp.disabled = !has;
+      if (edit?.mvp_player_id) $mvp.value = String(edit.mvp_player_id);
     })
     .catch(() => { $mvp.innerHTML = '<option value="">Não foi possível carregar o elenco</option>'; });
 
@@ -390,6 +395,7 @@ function openLogDialog(g) {
     paint();
   });
   document.getElementById('clear-rating').addEventListener('click', () => { rating = null; paint(); });
+  paint();
   const $like = document.getElementById('like');
   $like.addEventListener('click', () => { liked = !liked; $like.setAttribute('aria-pressed', liked); });
   document.getElementById('cancel').addEventListener('click', () => $dialog.close());
@@ -397,8 +403,10 @@ function openLogDialog(g) {
   document.getElementById('log-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(e.target);
+    // Com o elenco ainda carregando (ou fora do ar), mantém a escolha que já existia.
+    const mvpPlayerId = $mvp.disabled ? (edit?.mvp_player_id ?? null) : f.get('mvp') ? Number(f.get('mvp')) : null;
     try {
-      await api('POST', '/api/logs', {
+      await api(edit ? 'PUT' : 'POST', edit ? `/api/logs/${edit.id}` : '/api/logs', {
         gameId: g.id,
         rating,
         liked,
@@ -407,7 +415,7 @@ function openLogDialog(g) {
         review: f.get('review'),
         spoilers: f.get('spoilers') === 'on',
         rewatch: f.get('rewatch') === 'on',
-        mvpPlayerId: f.get('mvp') ? Number(f.get('mvp')) : null,
+        mvpPlayerId,
       });
       $dialog.close();
       render();
@@ -610,6 +618,7 @@ async function viewReview(id) {
     <div class="review-page">
       <div class="game-line big">${gameLine(r, { showScore: scoreOk })}</div>
       ${reviewItem(r)}
+      ${mine ? '<button class="link small" id="edit-review">Editar review</button>' : ''}
       <h2>Comentários</h2>
       <div id="comments">${commentHtml(comments)}</div>
       ${me ? `<form id="comment-form" class="comment-form">
@@ -620,6 +629,10 @@ async function viewReview(id) {
     </div>`;
   bindSpoilers();
 
+  // O formulário de registro só precisa de id, data e times do jogo.
+  document.getElementById('edit-review')?.addEventListener('click', () => openLogDialog(
+    { id: r.game_id, date: r.game_date, away: { abbrev: r.away_abbrev }, home: { abbrev: r.home_abbrev } }, r,
+  ));
   const $comments = document.getElementById('comments');
   let current = comments; // comentários na tela, para a edição saber o texto original
   const showComments = (list) => {

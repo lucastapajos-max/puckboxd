@@ -102,6 +102,11 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ),
     logById: db.prepare('SELECT * FROM logs WHERE id = ?'),
+    updateLog: db.prepare(
+      `UPDATE logs SET watched_on = ?, rating = ?, review = ?, liked = ?, spoilers = ?, rewatch = ?, how = ?,
+                       mvp_player_id = ?, mvp_name = ?, mvp_team = ?, mvp_position = ?, edited_at = datetime('now')
+       WHERE id = ?`,
+    ),
     deleteLog: db.prepare('DELETE FROM logs WHERE id = ? AND user_id = ?'),
     gameStats: db.prepare(
       `SELECT COUNT(*) AS logs, COUNT(DISTINCT user_id) AS watchers, SUM(liked) AS likes,
@@ -110,7 +115,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     ),
     gameHistogram: db.prepare('SELECT rating, COUNT(*) AS n FROM logs WHERE game_id = ? AND rating IS NOT NULL GROUP BY rating'),
     gameReviews: db.prepare(
-      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, l.mvp_name, l.mvp_team, u.username
+      `SELECT l.id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username
        FROM logs l JOIN users u ON u.id = l.user_id
        WHERE l.game_id = ? AND l.review IS NOT NULL AND l.review <> ''
        ORDER BY l.created_at DESC LIMIT 50`,
@@ -137,7 +142,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
        ) GROUP BY team ORDER BY n DESC LIMIT 5`,
     ),
     feed: db.prepare(
-      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.mvp_name, l.mvp_team, u.username,
+      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.edited_at, l.mvp_name, l.mvp_team, u.username,
               g.game_date, g.away_abbrev, g.home_abbrev, g.away_score, g.home_score, g.last_period
        FROM logs l JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id
        ORDER BY l.created_at DESC, l.id DESC LIMIT 30`,
@@ -301,12 +306,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
 
   // --- diário ---
 
-  route('POST', /^\/api\/logs$/, async (req) => {
-    const user = requireUser(req);
-    const body = await readJson(req);
-    const gameId = String(body.gameId ?? '');
-    if (!GAME_RE.test(gameId)) throw new HttpError(400, 'Jogo inválido');
-
+  // Valida os campos de um registro (usado ao criar e ao editar). O jogo vem da API, nunca do cliente.
+  async function readLogFields(body, gameId) {
     const rating = body.rating == null ? null : Number(body.rating);
     if (rating !== null && !(Number.isInteger(rating) && rating >= 1 && rating <= 10)) {
       throw new HttpError(400, 'Nota deve ir de 1 a 10 (meias estrelas)');
@@ -317,7 +318,6 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     if (how !== null && !['live', 'tv', 'replay', 'arena'].includes(how)) throw new HttpError(400, 'Forma de assistir inválida');
     const review = typeof body.review === 'string' ? body.review.trim().slice(0, 5000) : '';
 
-    // O retrato do jogo vem da API, nunca do cliente.
     const game = await nhl.game(Number(gameId));
     if (game.state === 'future') throw new HttpError(400, 'Esse jogo ainda não começou');
     if (watchedOn < game.date) throw new HttpError(400, 'A data em que assistiu não pode ser antes do jogo');
@@ -329,14 +329,33 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
       mvp = [...away.players, ...home.players].find((p) => p.id === Number(body.mvpPlayerId));
       if (!mvp) throw new HttpError(400, 'Esse jogador não participou do jogo');
     }
-
-    snapshotGame(game);
-    const { lastInsertRowid } = q.insertLog.run(
-      user.id, game.id, watchedOn, rating, review || null,
+    const fields = [
+      watchedOn, rating, review || null,
       body.liked ? 1 : 0, body.spoilers ? 1 : 0, body.rewatch ? 1 : 0, how,
       mvp?.id ?? null, mvp?.name ?? null, mvp?.team ?? null, mvp?.position ?? null,
-    );
+    ];
+    return { game, fields };
+  }
+
+  route('POST', /^\/api\/logs$/, async (req) => {
+    const user = requireUser(req);
+    const body = await readJson(req);
+    const gameId = String(body.gameId ?? '');
+    if (!GAME_RE.test(gameId)) throw new HttpError(400, 'Jogo inválido');
+    const { game, fields } = await readLogFields(body, gameId);
+    snapshotGame(game);
+    const { lastInsertRowid } = q.insertLog.run(user.id, game.id, ...fields);
     return { log: q.logById.get(lastInsertRowid) };
+  });
+
+  // Edita um registro seu. O jogo não muda; curtidas e comentários ficam.
+  route('PUT', /^\/api\/logs\/(\d+)$/, async (req, _res, [id]) => {
+    const user = requireUser(req);
+    const log = q.logById.get(Number(id));
+    if (!log || log.user_id !== user.id) throw new HttpError(404, 'Registro não encontrado');
+    const { fields } = await readLogFields(await readJson(req), log.game_id);
+    q.updateLog.run(...fields, log.id);
+    return { log: q.logById.get(log.id) };
   });
 
   route('DELETE', /^\/api\/logs\/(\d+)$/, (req, _res, [id]) => {

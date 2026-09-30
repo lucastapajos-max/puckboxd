@@ -29,7 +29,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
        WHERE f.follower_id = ? ORDER BY f.created_at DESC LIMIT 200`,
     ),
     followingFeed: db.prepare(
-      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at,
+      `SELECT l.id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.created_at, l.edited_at,
               l.mvp_name, l.mvp_team, u.username, ${GAME_COLS}
        FROM logs l JOIN follows f ON f.followee_id = l.user_id AND f.follower_id = ?
        JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id
@@ -46,7 +46,7 @@ export function createSocial({ db, nhl, route, currentUser, requireUser, snapsho
     // reviews
     logFull: db.prepare(
       `SELECT l.id, l.user_id, l.game_id, l.watched_on, l.rating, l.review, l.liked, l.spoilers, l.rewatch, l.how,
-              l.created_at, l.mvp_name, l.mvp_team, u.username, ${GAME_COLS}
+              l.created_at, l.edited_at, l.mvp_player_id, l.mvp_name, l.mvp_team, u.username, ${GAME_COLS}
        FROM logs l JOIN users u ON u.id = l.user_id JOIN games g ON g.id = l.game_id WHERE l.id = ?`,
     ),
     logOwner: db.prepare('SELECT user_id FROM logs WHERE id = ?'),
