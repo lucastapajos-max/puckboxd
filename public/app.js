@@ -118,7 +118,7 @@ function histogram(h, total) {
     const n = h[i + 1] ?? 0;
     return `<span style="height:${(n / max) * 100}%" title="${(i + 1) / 2}★: ${n}"></span>`;
   }).join('');
-  return `<div class="histo">${bars}</div><div class="histo-labels"><span>½★</span><span>${total} notas</span><span>★★★★★</span></div>`;
+  return `<div class="histo">${bars}</div><div class="histo-labels"><span>½★</span><span>${total} ${total === 1 ? 'nota' : 'notas'}</span><span>★★★★★</span></div>`;
 }
 
 function bindSpoilers(root = $view) {
@@ -225,7 +225,7 @@ async function viewGame(id) {
         <h2>Comunidade</h2>
         ${c.rated ? `<div class="avg-big">${(c.avg / 2).toFixed(1)} <span class="stars" style="font-size:1.4rem">★</span></div>` : '<p class="muted">Sem notas ainda.</p>'}
         ${histogram(c.histogram, c.rated)}
-        <p class="small muted">${c.watchers} ${c.watchers === 1 ? 'pessoa assistiu' : 'pessoas assistiram'} · ${c.likes ?? 0} curtidas</p>
+        <p class="small muted">${c.watchers} ${c.watchers === 1 ? 'pessoa assistiu' : 'pessoas assistiram'} · ${c.likes ?? 0} ${c.likes === 1 ? 'curtida' : 'curtidas'}</p>
       </aside>
     </div>`;
 
