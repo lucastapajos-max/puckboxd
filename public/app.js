@@ -520,24 +520,26 @@ async function viewUser(username) {
   }).join('');
 
   $view.innerHTML = `
-    <div class="profile-head">
-      <div class="avatar-wrap">
+    <div class="user-head">
+      <div class="user-photo">
         ${avatar(user)}
-        ${isMe ? `<form class="photo-form" id="photo-form">
-            <label class="link small" for="photo-input">${user.avatar_at ? 'Trocar foto' : 'Adicionar foto'}</label>
-            <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp">
-            ${user.avatar_at ? '<button type="button" class="link small muted-link" id="photo-remove">Remover</button>' : ''}
-          </form>
-          <p class="error small" id="photo-error"></p>` : ''}
+        ${isMe ? `
+          <button type="button" class="photo-edit" id="photo-edit" aria-label="Editar foto" aria-haspopup="menu" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 17.25V20h2.75l8.1-8.1-2.75-2.75L4 17.25Zm13.7-7.6a1 1 0 0 0 0-1.4l-1.95-1.95a1 1 0 0 0-1.4 0l-1.5 1.5 2.75 2.75 2.1-1.9Z"/></svg>
+          </button>
+          <div class="photo-menu" id="photo-menu" role="menu" hidden>
+            <label role="menuitem" for="photo-input">${user.avatar_at ? 'Alterar foto' : 'Adicionar foto'}</label>
+            ${user.avatar_at ? '<button type="button" role="menuitem" class="danger-item" id="photo-remove">Remover foto</button>' : ''}
+          </div>
+          <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp" hidden>` : ''}
       </div>
-      <div>
+      <div class="user-id">
         <h1>${esc(user.username)} ${user.fav_team ? logo(user.fav_team, 'sm') : ''}</h1>
-        <p class="muted" style="margin:0">${user.bio ? esc(user.bio) : isMe ? 'Escreva uma bio no seu perfil.' : ''}</p>
-        <p class="small" style="margin:.4rem 0 0">
+        <p class="small">
           <a href="#/u/${esc(user.username)}/rede"><b id="followers-n">${user.followers}</b> ${user.followers === 1 ? 'seguidor' : 'seguidores'} · <b>${user.following}</b> seguindo</a>
           ${user.follows_you ? '<span class="badge">Segue você</span>' : ''}
         </p>
-        ${me && !isMe ? `<div style="margin-top:.5rem">${followButton(user.username, user.is_following)}</div>` : ''}
+        ${me && !isMe ? followButton(user.username, user.is_following) : ''}
         ${isMe ? '<button class="link small profile-logout" id="profile-logout">Sair da conta</button>' : ''}
       </div>
       <div class="stat-row">
@@ -546,6 +548,8 @@ async function viewUser(username) {
         <div><b>${stats.reviews ?? 0}</b><span>Reviews</span></div>
         <div><b>${stats.avg ? (stats.avg / 2).toFixed(1) : '–'}</b><span>Nota média</span></div>
       </div>
+      ${user.bio || isMe ? `<p class="user-bio ${user.bio ? '' : 'muted'}">${user.bio ? esc(user.bio) : 'Escreva uma bio no seu perfil.'}</p>` : ''}
+      <p class="error small" id="photo-error"></p>
     </div>
 
     ${isMe ? `
@@ -576,6 +580,19 @@ async function viewUser(username) {
       </aside>
     </div>`;
 
+  const $photoMenu = document.getElementById('photo-menu');
+  const $photoEdit = document.getElementById('photo-edit');
+  const togglePhotoMenu = (open) => {
+    $photoMenu.hidden = !open;
+    $photoEdit.setAttribute('aria-expanded', open);
+  };
+  $photoEdit?.addEventListener('click', (e) => { e.stopPropagation(); togglePhotoMenu($photoMenu.hidden); });
+  $photoMenu?.addEventListener('click', () => togglePhotoMenu(false));
+  // Fecha ao clicar fora ou apertar Esc. Os ouvintes saem junto quando a tela muda (AbortController).
+  const menuEvents = new AbortController();
+  document.addEventListener('click', (e) => { if ($photoMenu && !$photoMenu.hidden && !e.target.closest('.user-photo')) togglePhotoMenu(false); }, { signal: menuEvents.signal });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $photoMenu && !$photoMenu.hidden) togglePhotoMenu(false); }, { signal: menuEvents.signal });
+  window.addEventListener('hashchange', () => menuEvents.abort(), { once: true });
   document.getElementById('photo-input')?.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;

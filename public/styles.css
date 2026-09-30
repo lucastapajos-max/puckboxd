@@ -324,3 +324,47 @@ button.small, .btn.small { padding: .25rem .6rem; font-size: .8rem; }
   .stat-row b { font-size: 1.5rem; }
   .game-hero { padding: 1rem; gap: .5rem; }
 }
+
+/* ---------- cabeçalho do perfil ---------- */
+/* computador: foto | nome e seguidores | números; bio embaixo, de ponta a ponta */
+.user-head { display: grid; grid-template-columns: auto 1fr auto; column-gap: 1.2rem; row-gap: .8rem; align-items: center; margin-top: 1.5rem; }
+.user-id { min-width: 0; }
+.user-id h1 { font-size: 1.9rem; margin: 0; display: flex; align-items: center; gap: .45rem; overflow-wrap: anywhere; }
+.user-id p { margin: .2rem 0 .45rem; }
+.user-id .follow-btn { margin-top: .1rem; }
+.user-head .stat-row { margin-left: 0; }
+.user-bio { grid-column: 1 / -1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-head > .error { grid-column: 1 / -1; margin: 0; }
+.user-head > .error:empty { display: none; }
+
+/* foto com lápis de edição */
+.user-photo { position: relative; width: 84px; height: 84px; }
+.user-photo .avatar { width: 84px; height: 84px; font-size: 2.2rem; }
+.photo-edit { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 50%; padding: 0; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .45); color: #fff; opacity: 0; transition: opacity .15s; }
+.photo-edit svg { width: 26px; height: 26px; }
+.user-photo:hover .photo-edit, .photo-edit:focus-visible, .photo-edit[aria-expanded='true'] { opacity: 1; }
+/* toque não tem "passar o mouse": no celular o lápis fica sempre visível, pequeno, no canto */
+@media (hover: none) {
+  .photo-edit { inset: auto -2px -2px auto; width: 30px; height: 30px; opacity: 1; background: var(--ice); color: var(--on-ice); border: 2px solid var(--bg); }
+  .photo-edit svg { width: 16px; height: 16px; }
+}
+.photo-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 10; min-width: 170px; background: var(--bg-2); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); padding: .3rem; display: flex; flex-direction: column; }
+.photo-menu > * { display: block; width: 100%; text-align: left; background: none; border: 0; font: inherit; font-size: .9rem; font-weight: 500;
+  color: var(--text); padding: .5rem .7rem; border-radius: 6px; cursor: pointer; }
+.photo-menu > *:hover { background: var(--bg-3); filter: none; }
+.photo-menu .danger-item { color: var(--goal); }
+
+@media (max-width: 640px) {
+  /* celular: foto | nome; números e bio ocupam a largura toda */
+  .user-head { grid-template-columns: auto 1fr; column-gap: .9rem; row-gap: .7rem; margin-top: 1rem; }
+  .user-photo, .user-photo .avatar { width: 64px; height: 64px; }
+  .user-photo .avatar { font-size: 1.7rem; }
+  .user-id h1 { font-size: 1.4rem; }
+  .user-head .stat-row { grid-column: 1 / -1; grid-row: 3; }
+  .user-bio { grid-row: 2; }
+}
+.photo-edit { -webkit-tap-highlight-color: transparent; }
+.photo-edit:focus { outline: none; }
+.photo-edit:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
