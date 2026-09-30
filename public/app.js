@@ -849,8 +849,10 @@ async function viewWatchlist(username) {
   const started = (i) => i.finished || (i.start_utc ? Date.parse(i.start_utc) <= now : i.game_date <= todayISO());
   const ready = items.filter(started).reverse(); // mais recentes primeiro
   const upcoming = items.filter((i) => !started(i));
+  // Dia e hora no fuso de quem está vendo (no Brasil, horário de Brasília): um jogo às 00:30
+  // aparece no dia seguinte, não no dia da agenda da NHL.
   const when = (i) => i.start_utc
-    ? `${fmtDate(i.game_date, { weekday: 'short', day: '2-digit', month: 'short' })} · ${fmtTime(i.start_utc)}`
+    ? `${new Date(i.start_utc).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' })} · ${fmtTime(i.start_utc)}`
     : fmtDate(i.game_date);
   // Sem placar de propósito: são jogos que a pessoa ainda não viu.
   const row = (i, isReady) => `<li class="watch-item" data-item="${i.game_id}">
