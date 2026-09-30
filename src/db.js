@@ -71,5 +71,54 @@ export function openDb(file) {
     `);
   }
   db.exec('CREATE INDEX IF NOT EXISTS logs_mvp ON logs(mvp_player_id) WHERE mvp_player_id IS NOT NULL');
+
+  // Parte social: listas, seguidores, curtidas e comentários em reviews.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS lists (
+      id          INTEGER PRIMARY KEY,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      title       TEXT NOT NULL,
+      description TEXT,
+      ranked      INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS lists_user ON lists(user_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS list_items (
+      list_id   INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+      game_id   INTEGER NOT NULL REFERENCES games(id),
+      position  INTEGER NOT NULL,
+      note      TEXT,
+      PRIMARY KEY (list_id, game_id)
+    );
+    CREATE INDEX IF NOT EXISTS list_items_game ON list_items(game_id);
+
+    CREATE TABLE IF NOT EXISTS follows (
+      follower_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      followee_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (follower_id, followee_id),
+      CHECK (follower_id <> followee_id)
+    );
+    CREATE INDEX IF NOT EXISTS follows_followee ON follows(followee_id);
+
+    CREATE TABLE IF NOT EXISTS review_likes (
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      log_id     INTEGER NOT NULL REFERENCES logs(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, log_id)
+    );
+    CREATE INDEX IF NOT EXISTS review_likes_log ON review_likes(log_id);
+
+    CREATE TABLE IF NOT EXISTS comments (
+      id         INTEGER PRIMARY KEY,
+      log_id     INTEGER NOT NULL REFERENCES logs(id) ON DELETE CASCADE,
+      user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body       TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS comments_log ON comments(log_id, id);
+  `);
   return db;
 }

@@ -6,6 +6,8 @@ import { join, normalize, extname } from 'node:path';
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { NhlError } from './nhl.js';
 import { isTeam } from './teams.js';
+import { HttpError, readJson } from './http.js';
+import { createSocial } from './social.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -15,13 +17,6 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
 };
-
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const GAME_RE = /^\d{10}$/;
@@ -41,20 +36,6 @@ function parseCookies(header = '') {
   return out;
 }
 
-async function readJson(req) {
-  let size = 0;
-  const chunks = [];
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 32 * 1024) throw new HttpError(413, 'Corpo da requisição grande demais');
-    chunks.push(chunk);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-  } catch {
-    throw new HttpError(400, 'JSON inválido');
-  }
-}
 
 const SECURITY_HEADERS = {
   'x-content-type-options': 'nosniff',
@@ -224,10 +205,20 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     return games.map((g) => ({ ...g, community: byId.get(g.id) ?? { avg: null, logs: 0 } }));
   }
 
+  // Guarda o retrato do jogo (times, placar, data). Diário, listas e feed leem daqui.
+  function snapshotGame(game) {
+    q.upsertGame.run(
+      game.id, game.date, game.season, game.gameType, game.away.abbrev, game.home.abbrev,
+      game.away.score, game.home.score, game.state === 'final' ? game.lastPeriod : null, game.venue,
+    );
+  }
+
   // ---------- rotas ----------
 
   const routes = [];
   const route = (method, pattern, handler) => routes.push({ method, pattern, handler });
+
+  const social = createSocial({ db, nhl, route, currentUser, requireUser, snapshotGame, userByName: q.userByName });
 
   route('GET', /^\/api\/me$/, (req) => ({ user: currentUser(req) }));
 
@@ -298,7 +289,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
       community: {
         ...stats,
         histogram: Object.fromEntries(q.gameHistogram.all(game.id).map((r) => [r.rating, r.n])),
-        reviews: q.gameReviews.all(game.id),
+        reviews: social.decorateLogs(q.gameReviews.all(game.id), user?.id),
+        lists: social.listsWithGame(game.id),
         mvpVotes: q.gameMvpVotes.all(game.id),
       },
       myLogs: user ? q.myLogsForGame.all(game.id, user.id) : [],
@@ -338,10 +330,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
       if (!mvp) throw new HttpError(400, 'Esse jogador não participou do jogo');
     }
 
-    q.upsertGame.run(
-      game.id, game.date, game.season, game.gameType, game.away.abbrev, game.home.abbrev,
-      game.away.score, game.home.score, game.state === 'final' ? game.lastPeriod : null, game.venue,
-    );
+    snapshotGame(game);
     const { lastInsertRowid } = q.insertLog.run(
       user.id, game.id, watchedOn, rating, review || null,
       body.liked ? 1 : 0, body.spoilers ? 1 : 0, body.rewatch ? 1 : 0, how,
@@ -362,7 +351,8 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     if (!user) throw new HttpError(404, 'Usuário não encontrado');
     const page = Math.max(0, Number(url.searchParams.get('page')) || 0);
     return {
-      user: q.userById.get(user.id),
+      user: { ...q.userById.get(user.id), ...social.followInfo(user.id, currentUser(req)?.id) },
+      lists: social.userLists(user.id),
       stats: {
         ...q.userStats.get(user.id),
         histogram: Object.fromEntries(q.userRatingHistogram.all(user.id).map((r) => [r.rating, r.n])),
@@ -373,8 +363,9 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
     };
   });
 
-  route('GET', /^\/api\/feed$/, () => ({
-    recent: q.feed.all(),
+  route('GET', /^\/api\/feed$/, (req) => ({
+    recent: social.decorateLogs(q.feed.all(), currentUser(req)?.id),
+    recentLists: social.recentLists(),
     popular: q.popular.all('-7 days'),
     topRated: q.topRated.all(2),
     topMvps: q.topMvps.all(),

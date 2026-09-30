@@ -10,6 +10,9 @@ Nome provisório. Troque à vontade.
 - **Página do jogo**: placar, gols por período (com assistências e PP/SH), três estrelas, reviews da comunidade, média e histograma de notas
 - **Registro de jogo**: nota em meias estrelas, curtida, data em que assistiu, como assistiu (ao vivo, TV, reprise, ginásio), review com marcação de spoiler, "já tinha visto"
 - **Escolha do espectador**: no registro, você aponta quem foi o melhor jogador da partida na sua opinião (lista montada com o boxscore do jogo). A página do jogo mostra a votação, o perfil mostra os jogadores que você mais escolheu e a Comunidade tem o ranking geral. Uma pessoa vale um voto por jogo.
+- **Listas**: "Melhores jogos de playoff que eu vi", em ranking numerado ou não, com nota por jogo. Dá para criar e adicionar pela página do jogo, ou montar e reordenar pela própria lista.
+- **Seguir pessoas**: aba "Seguindo" com o que quem você segue registrou, sugestões de quem seguir e página de seguidores.
+- **Curtir e comentar reviews**: cada review tem página própria com comentários. Quem escreveu a review pode apagar comentários nela.
 - **Modo sem spoiler**: esconde placares, gols e três estrelas de jogos que você ainda não registrou. Liga no topo da página. Dá pra revelar um jogo específico.
 - **Perfil**: diário agrupado por mês, jogos no ano, nota média, histograma pessoal, times mais vistos, time do coração e bio
 - **Comunidade**: atividade recente, populares da semana, mais bem avaliados
@@ -45,6 +48,8 @@ O app detecta o Railway sozinho: grava o banco no volume, liga cookies `Secure` 
 ```
 src/server.js   sobe o servidor
 src/app.js      rotas HTTP, autenticação, diário, feed
+src/social.js   listas, seguidores, curtidas e comentários
+src/http.js     erros HTTP e leitura de JSON
 src/nhl.js      cliente da API da NHL: cache em memória, normalização, mock
 src/db.js       schema SQLite (node:sqlite, embutido no Node)
 public/         front-end em JS puro, rotas por hash
@@ -68,8 +73,7 @@ Quando alguém registra um jogo, o servidor busca o jogo na NHL e grava um retra
 
 ## Próximos passos que fazem sentido
 
-- Listas ("melhores jogos 7 da história dos playoffs", "jogos com hat-trick")
-- Seguir outros usuários e feed só de quem você segue
-- Curtir e comentar reviews
+- Notificações (novo seguidor, curtida, comentário)
+- Curtir listas
 - Watchlist para jogos antigos (a API tem temporadas passadas via `/v1/club-schedule-season/{time}/{temporada}`)
 - Busca de jogos por confronto
