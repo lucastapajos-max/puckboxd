@@ -173,3 +173,14 @@ test('limite de tentativas de login e cabeçalhos de segurança', async () => {
   assert.equal(res.headers.get('x-frame-options'), 'DENY');
   limited.close();
 });
+
+test('arquivos do site pedem revalidação ao navegador', async () => {
+  const first = await fetch(`${base}/app.js`);
+  assert.equal(first.headers.get('cache-control'), 'no-cache');
+  const etag = first.headers.get('etag');
+  assert.ok(etag);
+  const again = await fetch(`${base}/app.js`, { headers: { 'if-none-match': etag } });
+  assert.equal(again.status, 304);
+  const index = await fetch(`${base}/qualquer/rota`);
+  assert.equal(index.headers.get('cache-control'), 'no-cache');
+});

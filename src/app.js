@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join, normalize, extname } from 'node:path';
-import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { NhlError } from './nhl.js';
 import { isTeam } from './teams.js';
 import { HttpError, readJson } from './http.js';
@@ -373,20 +373,32 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
 
   // ---------- servidor ----------
 
-  async function serveStatic(pathname, res) {
+  // `no-cache` + ETag: o navegador pode guardar o arquivo, mas confere a cada visita se mudou.
+  // Sem isso, depois de um deploy ele continua rodando o app.js antigo.
+  function sendFile(req, res, file, body) {
+    const etag = `"${createHash('sha1').update(body).digest('base64url')}"`;
+    const headers = { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-cache', etag };
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+    res.writeHead(200, headers);
+    res.end(body);
+  }
+
+  async function serveStatic(req, pathname, res) {
     const rel = pathname === '/' ? 'index.html' : pathname.slice(1);
     const file = normalize(join(publicDir, rel));
     if (!file.startsWith(publicDir)) throw new HttpError(403, 'Proibido');
+    let body;
     try {
-      const body = await readFile(file);
-      res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' });
-      res.end(body);
+      body = await readFile(file);
     } catch {
       // SPA: qualquer rota desconhecida cai no index
-      const body = await readFile(join(publicDir, 'index.html'));
-      res.writeHead(200, { 'content-type': MIME['.html'] });
-      res.end(body);
+      return sendFile(req, res, 'index.html', await readFile(join(publicDir, 'index.html')));
     }
+    sendFile(req, res, file, body);
   }
 
   return createServer(async (req, res) => {
@@ -410,7 +422,7 @@ export function createApp({ db, nhl, publicDir, secureCookies = false, trustProx
         throw new HttpError(404, 'Rota não encontrada');
       }
       if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Método não permitido');
-      await serveStatic(url.pathname, res);
+      await serveStatic(req, url.pathname, res);
     } catch (err) {
       const status = err instanceof HttpError || err instanceof NhlError ? err.status : 500;
       if (status === 500) console.error(err);
