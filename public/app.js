@@ -1281,6 +1281,58 @@ async function viewNotifications() {
   }
 }
 
+// ---------- ajuda ----------
+
+// Mesmo texto do guia em PDF/PNG (docs/guia-rapido.*). Se mudar um, mude o outro.
+function viewHelp() {
+  $view.innerHTML = `
+    <article class="help">
+      <h1>Como usar</h1>
+      <p>Um diário para os jogos da NHL que você assiste. Você registra o jogo, dá nota, escreve o que achou e vê a opinião de quem também viu. Está em fase de teste, então pode aparecer algum erro. Se aparecer, manda um print.</p>
+
+      <h2>Primeiro acesso</h2>
+      <ol>
+        <li>Toque em <b>Entrar</b>.</li>
+        <li>Escolha um nome de usuário e uma senha com pelo menos 8 caracteres e toque em <b>Criar conta</b>.</li>
+        <li><b>Anote a senha.</b> Ainda não existe a opção "esqueci minha senha".</li>
+        <li>Toque na sua foto no canto superior direito para abrir o perfil. Ali você escolhe o time do coração e escreve uma bio. Para colocar foto, toque no lápis em cima dela.</li>
+      </ol>
+      <p>O botão de sol ou lua no topo troca entre tema claro e escuro.</p>
+
+      <h2>Registrar um jogo</h2>
+      <p>Em <b>Jogos</b> aparece a agenda do dia. As setas mudam a data. Abra um jogo encerrado e toque em <b>+ Registrar / avaliar</b>. Tudo é opcional:</p>
+      <ul>
+        <li>nota de meia a cinco estrelas e o coração, se você gostou;</li>
+        <li>quando e como assistiu (ao vivo, na TV, reprise ou no ginásio);</li>
+        <li><b>escolha do espectador</b>: quem foi o melhor do jogo para você;</li>
+        <li>review, com a opção de marcar que tem spoiler.</li>
+      </ul>
+      <p>Dá para editar ou apagar depois, na própria página do jogo.</p>
+
+      <h2>Quero ver e modo sem spoiler</h2>
+      <p>Viu que um jogo aconteceu mas ainda não assistiu? Toque em <b>Quero ver</b> no card do jogo. Ele entra na sua watchlist e o placar some da tela até você assistir. A watchlist fica no seu perfil.</p>
+      <p>Para esconder todos os placares de uma vez, marque <b>Sem spoiler</b> no topo. Os jogos que você já registrou continuam com placar.</p>
+
+      <h2>Listas</h2>
+      <p>Na página de um jogo, <b>+ Adicionar à lista</b> cria uma lista nova ou coloca o jogo numa que já existe. Exemplo: "Melhores jogos 7 que eu vi". No perfil, <b>Editar lista</b> permite reordenar, escrever uma nota em cada jogo e numerar em ranking.</p>
+
+      <h2>Seguir, curtir e comentar</h2>
+      <ul>
+        <li>No perfil de alguém, <b>Seguir</b>. O que essa pessoa registrar aparece na aba <b>Seguindo</b>.</li>
+        <li>Nas reviews, o <b>♥</b> curte e <b>Comentar</b> abre a conversa.</li>
+        <li>O <b>sino</b> avisa quando alguém te segue, curte ou comenta.</li>
+      </ul>
+
+      <h2>Busca</h2>
+      <p>A lupa no topo procura pessoas, times e confrontos. Funciona com sigla, nome ou apelido: "WSH x PIT", "caps vs pens", "habs". Num confronto aparecem os jogos das duas últimas temporadas e o retrospecto.</p>
+
+      <h2>Horários</h2>
+      <p>Os horários aparecem no fuso do seu aparelho. No Brasil, é o horário de Brasília.</p>
+
+      <p class="help-back"><a href="#/" class="btn primary">${me ? 'Ir para os jogos' : 'Começar'}</a></p>
+    </article>`;
+}
+
 // ---------- roteador ----------
 
 async function render() {
@@ -1301,6 +1353,7 @@ async function render() {
     else if (section === 'listas' && arg === 'nova') viewNewList();
     else if (section === 'comunidade') await viewCommunity();
     else if (section === 'entrar') viewAuth();
+    else if (section === 'ajuda') viewHelp();
     else await viewSchedule(todayISO());
   } catch (e) {
     $view.innerHTML = `<p class="empty">${esc(e.message)}</p>`;
